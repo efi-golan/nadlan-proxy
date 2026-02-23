@@ -5,9 +5,11 @@ Bridges the browser-based real estate app to nadlan.gov.il's API,
 bypassing CORS restrictions that prevent direct browser access.
 
 Routes:
-  GET  /health           – health check
-  GET  /search?q=...     – search for address / street / neighborhood
-  POST /deals            – fetch transactions for a given ObjectID
+  GET  /health              – health check
+  GET  /search?q=...        – search for address / street / neighborhood
+  POST /deals               – fetch transactions for a given ObjectID
+  GET  /cities?q=...        – autocomplete city names
+  GET  /streets?q=&city=... – autocomplete street names (filtered by city)
 """
 
 import os, json, time, logging
@@ -16,12 +18,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # allow all origins (our HTML app can call this freely)
+CORS(app)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 NADLAN_BASE = "https://www.nadlan.gov.il/Nadlan.REST/Main"
+GOV_API     = "https://data.gov.il/api/3/action/datastore_search"
 
 HEADERS = {
     "Accept":           "application/json, text/plain, */*",
@@ -40,10 +43,9 @@ SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+# ── helpers ──────────────────────────────────────────────────────────────────
 
-def nadlan_post(endpoint: str, payload: dict, retries: int = 3) -> dict:
-    """POST to nadlan.gov.il with simple retry logic."""
+def nadlan_post(endpoint, payload, retries=3):
     url = f"{NADLAN_BASE}/{endpoint}"
     for attempt in range(retries):
         try:
@@ -57,10 +59,23 @@ def nadlan_post(endpoint: str, payload: dict, retries: int = 3) -> dict:
     raise RuntimeError(f"All {retries} attempts to nadlan failed")
 
 
-def nadlan_get(endpoint: str, params: dict = None) -> dict:
-    """GET to nadlan.gov.il."""
+def nadlan_get(endpoint, params=None):
     url = f"{NADLAN_BASE}/{endpoint}"
     r = SESSION.get(url, params=params, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def gov_get(resource_id, q, filters=None, limit=10):
+    """Query data.gov.il CKAN datastore."""
+    params = {
+        "resource_id": resource_id,
+        "q":           q,
+        "limit":       limit,
+    }
+    if filters:
+        params["filters"] = json.dumps(filters)
+    r = requests.get(GOV_API, params=params, timeout=10)
     r.raise_for_status()
     return r.json()
 
@@ -72,22 +87,72 @@ def health():
     return jsonify({"status": "ok", "service": "nadlan-proxy"})
 
 
+# ── AUTOCOMPLETE: CITIES ─────────────────────────────────────────────────────
+@app.route("/cities")
+def cities():
+    """
+    Return city name suggestions from data.gov.il.
+    Query param: q (min 2 chars)
+    """
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    try:
+        data = gov_get(
+            resource_id="b7cf8f14-64a2-4b33-8d4b-edb286fdbd37",
+            q=q, limit=8
+        )
+        records = data.get("result", {}).get("records", [])
+        results = []
+        for r in records:
+            name = r.get("שם_ישוב") or r.get("שם_יישוב") or ""
+            code = r.get("סמל_ישוב") or ""
+            if name:
+                results.append({"name": name, "code": code})
+        return jsonify({"results": results})
+    except Exception as e:
+        log.error(f"/cities error: {e}")
+        return jsonify({"error": str(e)}), 502
+
+
+# ── AUTOCOMPLETE: STREETS ────────────────────────────────────────────────────
+@app.route("/streets")
+def streets():
+    """
+    Return street name suggestions from data.gov.il.
+    Query params: q (min 2 chars), city_code (optional סמל_ישוב)
+    """
+    q         = request.args.get("q", "").strip()
+    city_code = request.args.get("city_code", "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    try:
+        filters = {"סמל_ישוב": city_code} if city_code else None
+        data    = gov_get(
+            resource_id="a7296d1a-f6c1-4b8a-b6b8-3f7fcf7e5dfd",
+            q=q, filters=filters, limit=12
+        )
+        records = data.get("result", {}).get("records", [])
+        seen, results = set(), []
+        for r in records:
+            name = r.get("שם_רחוב") or r.get("street_name") or ""
+            if name and name not in seen:
+                seen.add(name)
+                results.append({"name": name})
+        return jsonify({"results": results})
+    except Exception as e:
+        log.error(f"/streets error: {e}")
+        return jsonify({"error": str(e)}), 502
+
+
+# ── NADLAN SEARCH ─────────────────────────────────────────────────────────────
 @app.route("/search")
 def search():
-    """
-    Search nadlan for an address / street / city.
-    Returns a list of result objects each with ObjectID, ObjectIDType,
-    ResultLable, DescLayerID, X, Y – everything needed to fetch deals.
-
-    Query param:  q  (required) – free-text Hebrew search string
-    """
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
-
     try:
-        data = nadlan_get("GetSuggestV2", params={"searchText": q, "resultType": 0})
-        # nadlan returns a list directly
+        data    = nadlan_get("GetSuggestV2", params={"searchText": q, "resultType": 0})
         results = data if isinstance(data, list) else data.get("Results", [])
         return jsonify({"results": results})
     except Exception as e:
@@ -95,64 +160,46 @@ def search():
         return jsonify({"error": str(e)}), 502
 
 
+# ── NADLAN DEALS ──────────────────────────────────────────────────────────────
 @app.route("/deals", methods=["POST"])
 def deals():
-    """
-    Fetch real estate transactions for a given location.
-
-    Expected JSON body:
-    {
-      "ObjectID":      "65210861",          // from /search
-      "ObjectIDType":  "text",
-      "ObjectKey":     "UNIQ_ID",
-      "DescLayerID":   "STREETS_LAYER",
-      "ResultLable":   "שי עגנון, ראשון לציון",
-      "X":             182567.23,           // optional
-      "Y":             643770.91,           // optional
-      "PageNo":        1,                   // 1-based page number
-      "Rooms":         0                    // 0 = all rooms
-    }
-    """
     body = request.get_json(silent=True) or {}
-
     required = ["ObjectID", "DescLayerID", "ResultLable"]
-    missing = [k for k in required if not body.get(k)]
+    missing  = [k for k in required if not body.get(k)]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
 
     payload = {
-        "MoreAssestsType":    0,
-        "FillterRoomNum":     int(body.get("Rooms", 0)),
-        "GridDisplayType":    0,
-        "ResultLable":        body["ResultLable"],
-        "ResultType":         1,
-        "ObjectID":           body["ObjectID"],
-        "ObjectIDType":       body.get("ObjectIDType", "text"),
-        "ObjectKey":          body.get("ObjectKey", "UNIQ_ID"),
-        "DescLayerID":        body["DescLayerID"],
-        "Alert":              None,
-        "X":                  body.get("X", 0),
-        "Y":                  body.get("Y", 0),
-        "Gush":               "",
-        "Parcel":             "",
-        "showLotParcel":      False,
-        "showLotAddress":     False,
+        "MoreAssestsType":      0,
+        "FillterRoomNum":       int(body.get("Rooms", 0)),
+        "GridDisplayType":      0,
+        "ResultLable":          body["ResultLable"],
+        "ResultType":           1,
+        "ObjectID":             body["ObjectID"],
+        "ObjectIDType":         body.get("ObjectIDType", "text"),
+        "ObjectKey":            body.get("ObjectKey", "UNIQ_ID"),
+        "DescLayerID":          body["DescLayerID"],
+        "Alert":                None,
+        "X":                    body.get("X", 0),
+        "Y":                    body.get("Y", 0),
+        "Gush":                 "",
+        "Parcel":               "",
+        "showLotParcel":        False,
+        "showLotAddress":       False,
         "OriginalSearchString": body.get("ResultLable", ""),
-        "MutipuleResults":    False,
-        "ResultsOptions":     None,
-        "CurrentLavel":       3,
-        "Navs":               [],
-        "QueryMapParams":     None,
-        "isHistorical":       False,
-        "PageNo":             int(body.get("PageNo", 1)),
-        "OrderByFilled":      "DEALDATETIME",
-        "OrderByDescending":  True,
-        "Distance":           0,
+        "MutipuleResults":      False,
+        "ResultsOptions":       None,
+        "CurrentLavel":         3,
+        "Navs":                 [],
+        "QueryMapParams":       None,
+        "isHistorical":         False,
+        "PageNo":               int(body.get("PageNo", 1)),
+        "OrderByFilled":        "DEALDATETIME",
+        "OrderByDescending":    True,
+        "Distance":             0,
     }
-
     try:
         data = nadlan_post("GetAssestAndDeals", payload)
-        # The API returns AllResults (list of deals) + TotalCount
         return jsonify({
             "deals":      data.get("AllResults", []),
             "totalCount": data.get("TotalCount", 0),
