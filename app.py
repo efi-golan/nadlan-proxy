@@ -116,19 +116,28 @@ def deals():
         )
         r.raise_for_status()
         data = r.json()
+        log.info("nadlan response type=%s keys=%s", type(data).__name__,
+                 list(data.keys())[:10] if isinstance(data, dict) else str(data)[:200])
 
-        # Parse response — structure: {"allDeals": [...]} or {"deals": [...]}
-        raw = data.get("allDeals") or data.get("deals") or data.get("data") or []
-
-        if not isinstance(raw, list):
-            # Try to find list in response
-            for v in data.values():
-                if isinstance(v, list) and len(v) > 0:
-                    raw = v
-                    break
+        # Handle list or dict response
+        if isinstance(data, list):
+            raw = data
+        elif isinstance(data, dict):
+            raw = (data.get("allDeals") or data.get("deals") or
+                   data.get("data") or data.get("Data") or
+                   data.get("results") or data.get("Records") or [])
+            if not isinstance(raw, list):
+                for v in data.values():
+                    if isinstance(v, list):
+                        raw = v
+                        break
+                else:
+                    raw = []
+        else:
+            raw = []
 
         deals_out = []
-        for d in raw[:limit]:
+        for d in list(raw)[:limit]:
             try:
                 price = float(d.get("DEALAMOUNT") or d.get("price") or 0)
                 size  = float(d.get("ASSETROOMNUM") or d.get("DEALNATUREDESCRIPTION") or 0)
