@@ -1,11 +1,12 @@
 """
-Nadlan Proxy Server v2
-Uses data.gov.il (open government data) for all queries.
+Nadlan Proxy Server v3
+- Cities/Streets: data.gov.il
+- Deals: nadlan.gov.il CloudFront API
 Routes:
-  GET /health          - health check
-  GET /cities?q=       - autocomplete cities
-  GET /streets?q=&city_code= - autocomplete streets
-  GET /deals?street=&city=&rooms=&limit= - real estate transactions
+  GET /health
+  GET /cities?q=
+  GET /streets?q=&city_code=
+  GET /deals?street=&city=&limit=
 """
 
 import os, json, logging
@@ -19,12 +20,20 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 GOV_API          = "https://data.gov.il/api/3/action/datastore_search"
-DEALS_RESOURCE   = "b8ef3d6b-f708-4c5a-a600-b45ef46a47ac"
 CITIES_RESOURCE  = "b7cf8f14-64a2-4b33-8d4b-edb286fdbd37"
 STREETS_RESOURCE = "a7296d1a-f6c1-4b8a-b6b8-3f7fcf7e5dfd"
+NADLAN_API       = "https://x4006fhmy5.execute-api.il-central-1.amazonaws.com/api/deal"
 
 SESSION = requests.Session()
-SESSION.headers.update({"Accept": "application/json", "User-Agent": "NadlanProxy/2.0"})
+SESSION.headers.update({"Accept": "application/json", "User-Agent": "NadlanProxy/3.0"})
+
+NADLAN_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Origin": "https://www.nadlan.gov.il",
+    "Referer": "https://www.nadlan.gov.il/",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
 def gov_get(resource_id, filters=None, q=None, limit=10, sort=None):
     params = {"resource_id": resource_id, "limit": limit}
@@ -37,7 +46,7 @@ def gov_get(resource_id, filters=None, q=None, limit=10, sort=None):
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "service": "nadlan-proxy-v2"})
+    return jsonify({"status": "ok", "service": "nadlan-proxy-v3"})
 
 @app.route("/cities")
 def cities():
@@ -49,15 +58,15 @@ def cities():
         records = data.get("result", {}).get("records", [])
         seen, results = set(), []
         for r in records:
-            name = (r.get("שם_ישוב") or r.get("שם_יישוב") or "").strip()
-            code = str(r.get("סמל_ישוב") or "")
+            name = (r.get("שם_ישוב") or r.get("city_name") or "").strip()
+            code = str(r.get("סמל_ישוב") or r.get("city_code") or "")
             if name and name not in seen:
                 seen.add(name)
                 results.append({"name": name, "code": code})
         return jsonify({"results": results})
     except Exception as e:
-        log.error(f"/cities: {e}")
-        return jsonify({"error": str(e)}), 502
+        log.error("cities error: %s", e)
+        return jsonify({"results": [], "error": str(e)})
 
 @app.route("/streets")
 def streets():
@@ -66,67 +75,97 @@ def streets():
     if len(q) < 2:
         return jsonify({"results": []})
     try:
-        filters = {"סמל_ישוב": city_code} if city_code else None
-        data    = gov_get(STREETS_RESOURCE, q=q, filters=filters, limit=12)
+        filters = {}
+        if city_code:
+            filters["סמל_ישוב"] = city_code
+        data = gov_get(STREETS_RESOURCE, filters=filters if filters else None, q=q, limit=10)
         records = data.get("result", {}).get("records", [])
         seen, results = set(), []
         for r in records:
-            name = (r.get("שם_רחוב") or "").strip()
+            name = (r.get("שם_רחוב") or r.get("street_name") or "").strip()
             if name and name not in seen:
                 seen.add(name)
                 results.append({"name": name})
         return jsonify({"results": results})
     except Exception as e:
-        log.error(f"/streets: {e}")
-        return jsonify({"error": str(e)}), 502
+        log.error("streets error: %s", e)
+        return jsonify({"results": [], "error": str(e)})
 
 @app.route("/deals")
 def deals():
     street = request.args.get("street", "").strip()
-    city   = request.args.get("city", "").strip()
-    limit  = min(int(request.args.get("limit", 8)), 12)
+    city   = request.args.get("city",   "").strip()
+    limit  = int(request.args.get("limit", 8))
 
-    if not city:
-        return jsonify({"error": "Missing city"}), 400
+    if not street or not city:
+        return jsonify({"deals": [], "error": "missing params"})
+
+    # Try nadlan.gov.il CloudFront API
     try:
-        # Try with exact street + city
-        filters = {"עיר_עסקה": city}
-        if street:
-            filters["רחוב_עסקה"] = street
-        data    = gov_get(DEALS_RESOURCE, filters=filters, limit=limit, sort="תאריך_עסקה desc")
-        records = data.get("result", {}).get("records", [])
+        payload = {
+            "cityName": city,
+            "streetName": street,
+            "houseNum": "",
+            "pageNum": 1
+        }
+        r = requests.post(
+            NADLAN_API,
+            json=payload,
+            headers=NADLAN_HEADERS,
+            timeout=20
+        )
+        r.raise_for_status()
+        data = r.json()
 
-        # Fallback: city + street as free text
-        if not records and street:
-            data    = gov_get(DEALS_RESOURCE, filters={"עיר_עסקה": city}, q=street, limit=limit, sort="תאריך_עסקה desc")
-            records = data.get("result", {}).get("records", [])
+        # Parse response — structure: {"allDeals": [...]} or {"deals": [...]}
+        raw = data.get("allDeals") or data.get("deals") or data.get("data") or []
 
-        out = []
-        for r in records:
-            price = r.get("מחיר") or r.get("שווי_עסקה") or 0
-            size  = r.get("שטח_דירה") or r.get("שטח_כולל") or 0
-            try: price = float(price)
-            except: price = 0
-            try: size = float(size)
-            except: size = 0
-            ppm = round(price / size) if price > 0 and size > 0 else 0
-            out.append({
-                "address": ((r.get("רחוב_עסקה") or "") + " " + str(r.get("מספר_בית") or "")).strip(),
-                "city":    r.get("עיר_עסקה") or "",
-                "price":   price,
-                "size":    size,
-                "rooms":   r.get("מספר_חדרים") or "",
-                "floor":   r.get("קומה") or "",
-                "date":    (r.get("תאריך_עסקה") or "")[:7],
-                "type":    r.get("סוג_נכס") or "",
-                "ppm":     ppm,
-            })
+        if not isinstance(raw, list):
+            # Try to find list in response
+            for v in data.values():
+                if isinstance(v, list) and len(v) > 0:
+                    raw = v
+                    break
 
-        return jsonify({"deals": out, "total": len(out)})
+        deals_out = []
+        for d in raw[:limit]:
+            try:
+                price = float(d.get("DEALAMOUNT") or d.get("price") or 0)
+                size  = float(d.get("ASSETROOMNUM") or d.get("DEALNATUREDESCRIPTION") or 0)
+                # size might be rooms, look for area
+                area  = float(d.get("FLOORNO") or d.get("area") or d.get("DEALSIZE") or 0)
+                rooms = d.get("ASSETROOMNUM") or d.get("rooms") or ""
+                floor = d.get("FLOORNO") or d.get("floor") or ""
+                date  = d.get("DEALDATETIME") or d.get("DEALDATE") or d.get("date") or ""
+                addr  = d.get("STREETNAME") or d.get("address") or street
+                house = d.get("HOUSENUM") or d.get("housenum") or ""
+                if house:
+                    addr = addr + " " + str(house)
+                ppm   = round(price / area) if area > 0 and price > 0 else 0
+                # Format date
+                if date and len(str(date)) > 10:
+                    date = str(date)[:10]
+                deals_out.append({
+                    "address": addr,
+                    "city":    city,
+                    "price":   price,
+                    "size":    area,
+                    "rooms":   rooms,
+                    "floor":   floor,
+                    "date":    date,
+                    "ppm":     ppm
+                })
+            except Exception as pe:
+                log.warning("parse deal error: %s", pe)
+                continue
+
+        log.info("nadlan API returned %d deals for %s %s", len(deals_out), street, city)
+        return jsonify({"deals": deals_out, "source": "nadlan.gov.il", "raw_count": len(raw)})
+
     except Exception as e:
-        log.error(f"/deals: {e}")
-        return jsonify({"error": str(e)}), 502
+        log.error("nadlan API error: %s", e)
+        return jsonify({"deals": [], "error": str(e), "source": "nadlan-failed"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port)
