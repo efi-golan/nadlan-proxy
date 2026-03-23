@@ -123,18 +123,27 @@ def deals():
         if isinstance(data, list):
             raw = data
         elif isinstance(data, dict):
-            raw = (data.get("allDeals") or data.get("deals") or
-                   data.get("data") or data.get("Data") or
-                   data.get("results") or data.get("Records") or [])
-            if not isinstance(raw, list):
-                for v in data.values():
-                    if isinstance(v, list):
-                        raw = v
-                        break
-                else:
-                    raw = []
+            inner = (data.get("data") or data.get("Data") or
+                     data.get("allDeals") or data.get("deals") or
+                     data.get("results") or data.get("Records"))
+            log.info("nadlan inner type=%s val=%s", type(inner).__name__, str(inner)[:300])
+            if isinstance(inner, list):
+                raw = inner
+            elif isinstance(inner, dict):
+                raw = (inner.get("allDeals") or inner.get("deals") or
+                       inner.get("data") or inner.get("results") or [])
+                if not isinstance(raw, list):
+                    for v in inner.values():
+                        if isinstance(v, list):
+                            raw = v
+                            break
+                    else:
+                        raw = []
+            else:
+                raw = []
         else:
             raw = []
+        log.info("nadlan raw deals count=%d", len(raw))
 
         deals_out = []
         for d in list(raw)[:limit]:
