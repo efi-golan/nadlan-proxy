@@ -1,14 +1,7 @@
 """
-Nadlan Proxy Server v3
-- Cities/Streets: data.gov.il
-- Deals: nadlan.gov.il CloudFront API
-Routes:
-  GET /health
-  GET /cities?q=
-  GET /streets?q=&city_code=
-  GET /deals?street=&city=&limit=
+Nadlan Proxy Server v4
+- Cities/Streets/Deals: data.gov.il (open government data)
 """
-
 import os, json, logging
 import requests
 from flask import Flask, request, jsonify
@@ -22,31 +15,26 @@ log = logging.getLogger(__name__)
 GOV_API          = "https://data.gov.il/api/3/action/datastore_search"
 CITIES_RESOURCE  = "b7cf8f14-64a2-4b33-8d4b-edb286fdbd37"
 STREETS_RESOURCE = "a7296d1a-f6c1-4b8a-b6b8-3f7fcf7e5dfd"
-NADLAN_API       = "https://x4006fhmy5.execute-api.il-central-1.amazonaws.com/api/deal"
+DEALS_RESOURCE   = "0f63699b-f9a5-4e72-abc8-cb46af0e4d13"
 
 SESSION = requests.Session()
-SESSION.headers.update({"Accept": "application/json", "User-Agent": "NadlanProxy/3.0"})
-
-NADLAN_HEADERS = {
-    "Content-Type": "application/json",
+SESSION.headers.update({
     "Accept": "application/json",
-    "Origin": "https://www.nadlan.gov.il",
-    "Referer": "https://www.nadlan.gov.il/",
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+    "User-Agent": "NadlanProxy/4.0"
+})
 
 def gov_get(resource_id, filters=None, q=None, limit=10, sort=None):
     params = {"resource_id": resource_id, "limit": limit}
     if q:       params["q"] = q
     if filters: params["filters"] = json.dumps(filters, ensure_ascii=False)
     if sort:    params["sort"] = sort
-    r = SESSION.get(GOV_API, params=params, timeout=15)
+    r = SESSION.get(GOV_API, params=params, timeout=20)
     r.raise_for_status()
     return r.json()
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "service": "nadlan-proxy-v3"})
+    return jsonify({"status": "ok", "service": "nadlan-proxy-v4"})
 
 @app.route("/cities")
 def cities():
@@ -78,7 +66,9 @@ def streets():
         filters = {}
         if city_code:
             filters["סמל_ישוב"] = city_code
-        data = gov_get(STREETS_RESOURCE, filters=filters if filters else None, q=q, limit=10)
+        data = gov_get(STREETS_RESOURCE,
+                       filters=filters if filters else None,
+                       q=q, limit=10)
         records = data.get("result", {}).get("records", [])
         seen, results = set(), []
         for r in records:
@@ -100,69 +90,39 @@ def deals():
     if not street or not city:
         return jsonify({"deals": [], "error": "missing params"})
 
-    # Try nadlan.gov.il CloudFront API
     try:
-        payload = {
-            "cityName": city,
-            "streetName": street,
-            "houseNum": "",
-            "pageNum": 1
-        }
-        r = requests.post(
-            NADLAN_API,
-            json=payload,
-            headers=NADLAN_HEADERS,
-            timeout=20
-        )
-        r.raise_for_status()
-        data = r.json()
-        log.info("nadlan response type=%s keys=%s", type(data).__name__,
-                 list(data.keys())[:10] if isinstance(data, dict) else str(data)[:200])
+        # Try with street+city filter
+        filters = {"STREETNAME": street, "CITYNAME": city}
+        data = gov_get(DEALS_RESOURCE,
+                       filters=filters,
+                       limit=limit,
+                       sort="DEALDATETIME desc")
+        records = data.get("result", {}).get("records", [])
+        log.info("deals found %d for %s %s", len(records), street, city)
 
-        # Handle list or dict response
-        if isinstance(data, list):
-            raw = data
-        elif isinstance(data, dict):
-            inner = (data.get("data") or data.get("Data") or
-                     data.get("allDeals") or data.get("deals") or
-                     data.get("results") or data.get("Records"))
-            log.info("nadlan inner type=%s val=%s", type(inner).__name__, str(inner)[:300])
-            if isinstance(inner, list):
-                raw = inner
-            elif isinstance(inner, dict):
-                raw = (inner.get("allDeals") or inner.get("deals") or
-                       inner.get("data") or inner.get("results") or [])
-                if not isinstance(raw, list):
-                    for v in inner.values():
-                        if isinstance(v, list):
-                            raw = v
-                            break
-                    else:
-                        raw = []
-            else:
-                raw = []
-        else:
-            raw = []
-        log.info("nadlan raw deals count=%d", len(raw))
+        # If no results, try city only
+        if not records:
+            data = gov_get(DEALS_RESOURCE,
+                           filters={"CITYNAME": city},
+                           q=street,
+                           limit=limit,
+                           sort="DEALDATETIME desc")
+            records = data.get("result", {}).get("records", [])
+            log.info("deals fallback found %d", len(records))
 
         deals_out = []
-        for d in list(raw)[:limit]:
+        for d in records:
             try:
-                price = float(d.get("DEALAMOUNT") or d.get("price") or 0)
-                size  = float(d.get("ASSETROOMNUM") or d.get("DEALNATUREDESCRIPTION") or 0)
-                # size might be rooms, look for area
-                area  = float(d.get("FLOORNO") or d.get("area") or d.get("DEALSIZE") or 0)
-                rooms = d.get("ASSETROOMNUM") or d.get("rooms") or ""
-                floor = d.get("FLOORNO") or d.get("floor") or ""
-                date  = d.get("DEALDATETIME") or d.get("DEALDATE") or d.get("date") or ""
-                addr  = d.get("STREETNAME") or d.get("address") or street
-                house = d.get("HOUSENUM") or d.get("housenum") or ""
+                price = float(d.get("DEALAMOUNT") or 0)
+                area  = float(d.get("DEALSIZE")   or 0)
+                rooms = d.get("ASSETROOMNUM") or ""
+                floor = d.get("FLOORNO") or ""
+                date  = str(d.get("DEALDATETIME") or "")[:10]
+                addr  = (d.get("STREETNAME") or street)
+                house = d.get("HOUSENUM") or ""
                 if house:
                     addr = addr + " " + str(house)
-                ppm   = round(price / area) if area > 0 and price > 0 else 0
-                # Format date
-                if date and len(str(date)) > 10:
-                    date = str(date)[:10]
+                ppm = round(price / area) if area > 0 and price > 0 else 0
                 deals_out.append({
                     "address": addr,
                     "city":    city,
@@ -174,15 +134,18 @@ def deals():
                     "ppm":     ppm
                 })
             except Exception as pe:
-                log.warning("parse deal error: %s", pe)
+                log.warning("parse error: %s", pe)
                 continue
 
-        log.info("nadlan API returned %d deals for %s %s", len(deals_out), street, city)
-        return jsonify({"deals": deals_out, "source": "nadlan.gov.il", "raw_count": len(raw)})
+        return jsonify({
+            "deals": deals_out,
+            "source": "data.gov.il",
+            "count": len(deals_out)
+        })
 
     except Exception as e:
-        log.error("nadlan API error: %s", e)
-        return jsonify({"deals": [], "error": str(e), "source": "nadlan-failed"})
+        log.error("deals error: %s", e)
+        return jsonify({"deals": [], "error": str(e)})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
