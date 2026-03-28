@@ -6,6 +6,7 @@ import os, json, logging
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from compensation import compensation_bp, init_db
 
 app = Flask(__name__)
 CORS(app)
@@ -146,6 +147,9 @@ def deals():
     except Exception as e:
         log.error("deals error: %s", e)
         return jsonify({"deals": [], "error": str(e)})
+
+app.register_blueprint(compensation_bp)
+init_db(app)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
