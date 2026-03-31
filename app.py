@@ -186,9 +186,8 @@ def _parse_amount(val):
 
 
 def _sync_sheet_tab(tab_name):
-    gid_map = {t: str(i) for i, t in enumerate(SHEETS_TABS)}
-    gid = gid_map.get(tab_name, "0")
-    url = f"https://docs.google.com/spreadsheets/d/{SHEETS_ID}/export?format=csv&gid={gid}"
+    import urllib.parse
+    url = f"https://docs.google.com/spreadsheets/d/{SHEETS_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(tab_name)}"
     try:
         r = requests.get(url, timeout=15)
         if r.status_code != 200:
@@ -240,6 +239,22 @@ def _sheets_sync_loop():
                 if n:
                     log.info("Sheets auto-sync: %d agents synced from tab '%s'", n, tab)
         time.sleep(SHEETS_INTERVAL)
+
+
+@app.route("/comp/sync/now", methods=["POST"])
+def sync_now():
+    """Manual sync trigger – requires X-Admin-Key header."""
+    from compensation import ADMIN_KEY
+    key = request.headers.get("X-Admin-Key", "") or (request.get_json(silent=True) or {}).get("sync_key", "")
+    if ADMIN_KEY and key != ADMIN_KEY:
+        return jsonify({"error": "Unauthorised"}), 401
+    if not SHEETS_ID:
+        return jsonify({"error": "SHEETS_ID not configured"}), 400
+    total = 0
+    for tab in SHEETS_TABS:
+        n = _sync_sheet_tab(tab)
+        total += n
+    return jsonify({"synced": total, "tabs": SHEETS_TABS})
 
 
 # Start background sync thread (only if SHEETS_ID is configured)
