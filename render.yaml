@@ -2,9 +2,17 @@ services:
   - type: web
     name: nadlan-proxy
     runtime: python
+    plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --workers 2 --timeout 30
+    startCommand: gunicorn app:app --workers 2 --timeout 60
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-    plan: free
+      - key: COMP_DB_URI
+        value: sqlite:////data/compensation.db
+      - key: COMP_ADMIN_KEY
+        generateValue: true
+    disk:
+      name: comp-data
+      mountPath: /data
+      sizeGB: 1
