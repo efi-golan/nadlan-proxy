@@ -56,6 +56,19 @@ def comp_health():
     return _json({"status": "ok", "tier_count": tier_count, "agent_count": agent_count})
 
 
+@compensation_bp.delete("/agents/all")
+def delete_all_agents():
+    """Admin: wipe all agents + transactions (for re-sync). Requires X-Admin-Key."""
+    err = _require_admin()
+    if err:
+        return err
+    Transaction.query.delete()
+    TrainerOverride.query.delete()
+    Agent.query.delete()
+    db.session.commit()
+    return _json({"deleted": True})
+
+
 # ---------------------------------------------------------------------------
 # Tier configuration (admin)
 # ---------------------------------------------------------------------------
@@ -647,8 +660,10 @@ def sync_from_sheets():
     target_qrt   = float(data.get("target_quarterly") or 0) or None
     fiscal_year  = int(data.get("fiscal_year") or date.today().year)
 
-    # Find or create agent by name (and tab if provided)
+    # Find or create agent by name + tab (tab is the city branch)
     q = Agent.query.filter(Agent.name_he == name, Agent.is_active == True)  # noqa: E712
+    if tab:
+        q = q.filter(Agent.office_tab == tab)
     agent = q.first()
     if not agent:
         agent = Agent(name_he=name, office_tab=tab)
