@@ -167,10 +167,10 @@ init_db(app)
 SHEETS_ID       = os.environ.get("SHEETS_ID", "1MAnI-x5KzdHSymdb1ep7XzxCWJrI7BBq")
 SHEETS_TABS     = [t.strip() for t in os.environ.get("SHEETS_TABS", "רחובות,יבנה").split(",")]
 SHEETS_INTERVAL = int(os.environ.get("SHEETS_SYNC_INTERVAL", "300"))  # seconds (default 5 min)
-COL_NAME        = int(os.environ.get("SHEETS_COL_NAME", "1")) - 1
-COL_COMMISSION  = int(os.environ.get("SHEETS_COL_COMMISSION", "3")) - 1
-COL_TARGET      = int(os.environ.get("SHEETS_COL_TARGET", "5")) - 1
-COL_QUARTERLY   = int(os.environ.get("SHEETS_COL_QUARTERLY", "6")) - 1
+COL_NAME        = int(os.environ.get("SHEETS_COL_NAME", "7")) - 1   # col 7 = סוכן
+COL_COMMISSION  = int(os.environ.get("SHEETS_COL_COMMISSION", "16")) - 1  # col 16 = סך עמלה
+COL_TARGET      = int(os.environ.get("SHEETS_COL_TARGET", "0")) - 1   # not used in deal sheet
+COL_QUARTERLY   = int(os.environ.get("SHEETS_COL_QUARTERLY", "0")) - 1  # not used in deal sheet
 SHEETS_ADMIN_KEY = os.environ.get("COMP_ADMIN_KEY", "")
 
 
@@ -195,35 +195,37 @@ def _sync_sheet_tab(tab_name):
             return 0
         reader = csv.reader(io.StringIO(r.text))
         rows = list(reader)
+
+        # Skip header row; aggregate commission per agent name
+        # Sheet format: deal-per-row  (col 7=agent name, col 16=commission)
+        agent_totals = {}  # name → total commission
+        for row in rows[1:]:  # skip header
+            if len(row) <= max(COL_NAME, COL_COMMISSION):
+                continue
+            name = row[COL_NAME].strip()
+            skip_names = {"סוכן", "שם", "סה״כ", 'סה"כ', "", "נכס"}
+            if not name or name in skip_names:
+                continue
+            commission = _parse_amount(row[COL_COMMISSION] if len(row) > COL_COMMISSION else "")
+            if commission > 0:
+                agent_totals[name] = agent_totals.get(name, 0.0) + commission
+
         synced = 0
-        with app.app_context():
-            for row in rows:
-                if len(row) <= max(COL_NAME, COL_COMMISSION):
-                    continue
-                name = row[COL_NAME].strip()
-                if not name or name in ("סוכן", "שם", "סה״כ", "סה\"כ", ""):
-                    continue
-                commission = _parse_amount(row[COL_COMMISSION] if len(row) > COL_COMMISSION else "")
-                target_ann = _parse_amount(row[COL_TARGET] if len(row) > COL_TARGET else "")
-                target_qrt = _parse_amount(row[COL_QUARTERLY] if len(row) > COL_QUARTERLY else "")
-                if commission <= 0 and target_ann <= 0:
-                    continue
-                # Call the sync endpoint internally
-                with app.test_request_context():
-                    from compensation.routes import sync_from_sheets as _sync
+        fiscal_year = __import__("datetime").date.today().year
+        with app.test_client() as c:
+            for name, total in agent_totals.items():
                 payload = {
                     "name": name,
                     "tab": tab_name,
-                    "total_commission": commission,
-                    "target_annual": target_ann or None,
-                    "target_quarterly": target_qrt or None,
+                    "total_commission": total,
                     "sync_key": SHEETS_ADMIN_KEY,
-                    "fiscal_year": __import__("datetime").date.today().year,
+                    "fiscal_year": fiscal_year,
                 }
-                with app.test_client() as c:
-                    resp = c.post("/comp/sync/sheets", json=payload)
-                    if resp.status_code == 200:
-                        synced += 1
+                resp = c.post("/comp/sync/sheets", json=payload)
+                if resp.status_code == 200:
+                    synced += 1
+                else:
+                    log.warning("Sync failed for %s: %s", name, resp.get_data(as_text=True)[:200])
         return synced
     except Exception as e:
         log.error("Sheets sync error (tab %s): %s", tab_name, e)
