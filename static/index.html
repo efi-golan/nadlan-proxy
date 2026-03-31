@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דשבורד תגמול סוכנים</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#0f1117;color:#e8eaf6;direction:rtl;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.top-bar{background:#1a1d2e;border-bottom:1px solid #2d3148;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.top-bar .logo{font-size:1.2rem;font-weight:700;color:#7c83f5}
+.nav-tabs{display:flex;gap:6px}
+.nav-tab{padding:7px 16px;border-radius:8px;cursor:pointer;font-size:.9rem;transition:.2s;color:#9ea3c8}
+.nav-tab:hover{background:#252840;color:#e8eaf6}
+.nav-tab.active{background:#7c83f5;color:#fff;font-weight:600}
+.year-sel{background:#252840;border:1px solid #3d4270;color:#e8eaf6;padding:6px 12px;border-radius:8px;font-size:.9rem}
+.container{max-width:1300px;margin:0 auto;padding:24px}
+/* cards */
+.card{background:#1a1d2e;border:1px solid #2d3148;border-radius:14px;padding:20px}
+.card-sm{background:#1a1d2e;border:1px solid #2d3148;border-radius:10px;padding:14px}
+/* grid */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+/* stat */
+.stat-label{font-size:.78rem;color:#9ea3c8;margin-bottom:4px}
+.stat-val{font-size:1.5rem;font-weight:700;color:#e8eaf6}
+.stat-sub{font-size:.78rem;color:#9ea3c8;margin-top:2px}
+/* tiers */
+.tier-bronze{color:#CD7F32}.tier-silver{color:#C0C0C0}.tier-gold{color:#FFD700}
+.tier-platinum{color:#b0c4de}.tier-diamond{color:#B9F2FF}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600}
+.badge-bronze{background:#3d2b10;color:#CD7F32;border:1px solid #CD7F32}
+.badge-silver{background:#1e2230;color:#C0C0C0;border:1px solid #C0C0C0}
+.badge-gold{background:#2e2800;color:#FFD700;border:1px solid #FFD700}
+.badge-platinum{background:#1e2535;color:#b0c4de;border:1px solid #b0c4de}
+.badge-diamond{background:#0e2535;color:#B9F2FF;border:1px solid #B9F2FF}
+/* progress */
+.prog-wrap{background:#252840;border-radius:10px;height:10px;overflow:hidden;margin:6px 0}
+.prog-bar{height:100%;border-radius:10px;transition:width .5s}
+.prog-bronze{background:linear-gradient(90deg,#8B5E3C,#CD7F32)}
+.prog-silver{background:linear-gradient(90deg,#808080,#C0C0C0)}
+.prog-gold{background:linear-gradient(90deg,#B8860B,#FFD700)}
+.prog-platinum{background:linear-gradient(90deg,#6e8ca8,#b0c4de)}
+.prog-diamond{background:linear-gradient(90deg,#4aa8d0,#B9F2FF)}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{color:#9ea3c8;font-weight:500;padding:10px 12px;text-align:right;border-bottom:1px solid #2d3148}
+td{padding:10px 12px;border-bottom:1px solid #1e2136}
+tr:hover td{background:#1e2136;cursor:pointer}
+/* leaderboard */
+.lb-row{display:grid;grid-template-columns:40px 1fr 130px 130px 120px 60px;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #1e2136;transition:.2s}
+.lb-row:hover{background:#1e2136;cursor:pointer;border-radius:8px}
+.lb-rank{font-size:1.1rem;font-weight:700;color:#7c83f5;text-align:center}
+.lb-rank.r1{color:#FFD700}.lb-rank.r2{color:#C0C0C0}.lb-rank.r3{color:#CD7F32}
+.lb-name{font-weight:600}
+.lb-gci{font-size:.95rem;font-weight:700}
+.lb-count{font-size:.8rem;color:#9ea3c8;text-align:center}
+/* buttons */
+.btn{padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:.88rem;font-weight:600;transition:.2s}
+.btn-primary{background:#7c83f5;color:#fff}.btn-primary:hover{background:#6570f0}
+.btn-success{background:#22c55e;color:#fff}.btn-success:hover{background:#16a34a}
+.btn-outline{background:transparent;border:1px solid #3d4270;color:#e8eaf6}.btn-outline:hover{background:#252840}
+.btn-danger{background:#ef4444;color:#fff}.btn-danger:hover{background:#dc2626}
+/* form */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:.82rem;color:#9ea3c8;margin-bottom:5px}
+.form-control{width:100%;background:#252840;border:1px solid #3d4270;color:#e8eaf6;padding:9px 12px;border-radius:8px;font-size:.9rem;font-family:inherit}
+.form-control:focus{outline:none;border-color:#7c83f5}
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#1a1d2e;border:1px solid #2d3148;border-radius:16px;padding:28px;width:min(600px,95vw);max-height:90vh;overflow-y:auto}
+.modal-title{font-size:1.1rem;font-weight:700;margin-bottom:20px}
+/* section title */
+.sec-title{font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;color:#9ea3c8;margin-bottom:14px;font-weight:600}
+/* split bar */
+.split-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:.85rem}
+.split-label{width:70px;color:#9ea3c8}
+.split-bar-wrap{flex:1;background:#252840;border-radius:4px;height:16px;overflow:hidden}
+.split-bar-fill{height:100%;border-radius:4px}
+.split-val{width:80px;text-align:left;font-weight:600}
+/* tier breakdown */
+.tier-chunk{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1e2136;font-size:.85rem}
+/* toast */
+.toast{position:fixed;bottom:24px;right:24px;background:#22c55e;color:#fff;padding:12px 20px;border-radius:10px;font-size:.88rem;z-index:999;animation:fadein .3s}
+.toast.err{background:#ef4444}
+@keyframes fadein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* responsive */
+@media(max-width:800px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr}.lb-row{grid-template-columns:32px 1fr 90px 70px}}
+.hidden{display:none!important}
+.spinner{width:32px;height:32px;border:3px solid #3d4270;border-top-color:#7c83f5;border-radius:50%;animation:spin .7s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;color:#9ea3c8;padding:40px 0;font-size:.9rem}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="top-bar">
+  <div class="logo">🏠 דשבורד תגמול</div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showView('leaderboard')">לידרבורד</div>
+    <div class="nav-tab" onclick="showView('agents')">סוכנים</div>
+    <div class="nav-tab" onclick="showView('simulator')">סימולטור</div>
+    <div class="nav-tab" onclick="showView('tiers')">מדרגות</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <select class="year-sel" id="globalYear" onchange="onYearChange()"></select>
+    <button class="btn btn-primary" onclick="openAddAgent()">+ סוכן חדש</button>
+    <button class="btn btn-success" onclick="openAddTxn()">+ עסקה</button>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ===== LEADERBOARD VIEW ===== -->
+<div id="view-leaderboard">
+  <div id="officeTotals" class="g4" style="margin-bottom:20px"></div>
+  <div class="card">
+    <div class="sec-title">דירוג סוכנים — <span id="lbYear"></span></div>
+    <div style="display:grid;grid-template-columns:40px 1fr 130px 130px 120px 60px;gap:12px;padding:8px 16px">
+      <div style="color:#9ea3c8;font-size:.78rem">#</div>
+      <div style="color:#9ea3c8;font-size:.78rem">שם</div>
+      <div style="color:#9ea3c8;font-size:.78rem">GCI שנתי</div>
+      <div style="color:#9ea3c8;font-size:.78rem">התקדמות לרמה הבאה</div>
+      <div style="color:#9ea3c8;font-size:.78rem">רמה</div>
+      <div style="color:#9ea3c8;font-size:.78rem;text-align:center">עסקאות</div>
+    </div>
+    <div id="leaderboardRows"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ===== AGENTS VIEW ===== -->
+<div id="view-agents" class="hidden">
+  <div id="agentGrid" class="g3"></div>
+</div>
+
+<!-- ===== AGENT DETAIL VIEW ===== -->
+<div id="view-agent-detail" class="hidden">
+  <div style="margin-bottom:16px">
+    <button class="btn btn-outline" onclick="showView('leaderboard')">← חזרה ללידרבורד</button>
+  </div>
+  <div id="agentDetailContent"></div>
+</div>
+
+<!-- ===== SIMULATOR VIEW ===== -->
+<div id="view-simulator" class="hidden">
+  <div class="g2">
+    <div class="card">
+      <div class="sec-title">סימולטור עמלות</div>
+      <div class="form-group">
+        <label class="form-label">בחר סוכן (אופציונלי)</label>
+        <select class="form-control" id="simAgent" onchange="onSimAgentChange()">
+          <option value="">— ידני —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">GCI שנתי נוכחי (₪)</label>
+        <input class="form-control" type="number" id="simYtd" value="0" oninput="runSim()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">עמלה נוספת לסימולציה (₪)</label>
+        <input class="form-control" type="number" id="simExtra" value="100000" oninput="runSim()">
+      </div>
+    </div>
+    <div class="card" id="simResult">
+      <div class="empty">הזן נתונים לצד שמאל לקבלת סימולציה</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TIERS VIEW ===== -->
+<div id="view-tiers" class="hidden">
+  <div id="tiersContent"></div>
+</div>
+
+</div><!-- /container -->
+
+<!-- ===== MODAL: Add Transaction ===== -->
+<div id="modalTxn" class="modal-bg hidden">
+  <div class="modal">
+    <div class="modal-title">➕ רישום עסקה חדשה</div>
+    <div class="form-group">
+      <label class="form-label">סוכן *</label>
+      <select class="form-control" id="txnAgent" onchange="onTxnAgentChange()">
+        <option value="">בחר סוכן...</option>
+      </select>
+    </div>
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">תאריך עסקה *</label>
+        <input class="form-control" type="date" id="txnDate">
+      </div>
+      <div class="form-group">
+        <label class="form-label">עמלה ברוטו (₪) *</label>
+        <input class="form-control" type="number" id="txnAmount" placeholder="50000" oninput="onTxnAmountChange()">
+      </div>
+    </div>
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">כתובת הנכס</label>
+        <input class="form-control" type="text" id="txnAddr" placeholder="רחוב הרצל 12">
+      </div>
+      <div class="form-group">
+        <label class="form-label">עיר</label>
+        <input class="form-control" type="text" id="txnCity" placeholder="תל אביב">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">הערות</label>
+      <input class="form-control" type="text" id="txnNotes">
+    </div>
+    <!-- live preview -->
+    <div id="txnPreview" style="margin:14px 0"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeTxnModal()">ביטול</button>
+      <button class="btn btn-success" onclick="submitTxn()">שמור עסקה</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Add Agent ===== -->
+<div id="modalAgent" class="modal-bg hidden">
+  <div class="modal">
+    <div class="modal-title">➕ הוספת סוכן חדש</div>
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">שם מלא (עברית) *</label>
+        <input class="form-control" type="text" id="agentNameHe" placeholder="ישראל ישראלי">
+      </div>
+      <div class="form-group">
+        <label class="form-label">שם באנגלית</label>
+        <input class="form-control" type="text" id="agentNameEn" placeholder="Israel Israeli">
+      </div>
+    </div>
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">אימייל</label>
+        <input class="form-control" type="email" id="agentEmail">
+      </div>
+      <div class="form-group">
+        <label class="form-label">טלפון</label>
+        <input class="form-control" type="text" id="agentPhone" placeholder="050-1234567">
+      </div>
+    </div>
+    <div class="g2">
+      <div class="form-group">
+        <label class="form-label">רישיון תיווך</label>
+        <input class="form-control" type="text" id="agentLicense">
+      </div>
+      <div class="form-group">
+        <label class="form-label">מאמן (אופציונלי)</label>
+        <select class="form-control" id="agentTrainer"><option value="">ללא מאמן</option></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeAgentModal()">ביטול</button>
+      <button class="btn btn-primary" onclick="submitAgent()">שמור סוכן</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin
+let allAgents = [], allTiers = [], currentYear = new Date().getFullYear();
+
+// ─── helpers ────────────────────────────────────────────────
+const fmt = n => n == null ? '—' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits:0});
+const fmtPct = n => n == null ? '—' : Number(n).toFixed(1) + '%';
+const tierClass = t => ({Bronze:'bronze',Silver:'silver',Gold:'gold',Platinum:'platinum',Diamond:'diamond'}[t] || 'silver');
+const tierBadge = (name,nameHe) => `<span class="badge badge-${tierClass(name)}">${nameHe||name}</span>`;
+const progClass = t => `prog-${tierClass(t)}`;
+
+function toast(msg, err=false){
+  const el = document.createElement('div');
+  el.className = 'toast' + (err?' err':'');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 3000);
+}
+
+async function api(path, opts={}){
+  const r = await fetch(API + path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if(!r.ok) throw new Error((await r.json()).error || r.statusText);
+  return r.json();
+}
+
+// ─── year selector ───────────────────────────────────────────
+function initYear(){
+  const sel = document.getElementById('globalYear');
+  const y = new Date().getFullYear();
+  for(let i=y; i>=y-3; i--){
+    const o = document.createElement('option');
+    o.value=i; o.textContent=i; if(i===y) o.selected=true;
+    sel.appendChild(o);
+  }
+}
+function onYearChange(){
+  currentYear = +document.getElementById('globalYear').value;
+  const v = document.querySelector('.nav-tab.active')?.textContent;
+  if(v==='לידרבורד') loadLeaderboard();
+}
+
+// ─── views ───────────────────────────────────────────────────
+function showView(name){
+  document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('view-'+name)?.classList.remove('hidden');
+  document.querySelectorAll('.nav-tab').forEach(t=>{
+    t.classList.toggle('active', t.textContent.trim()===({
+      leaderboard:'לידרבורד',agents:'סוכנים',simulator:'סימולטור',tiers:'מדרגות'
+    }[name]));
+  });
+  if(name==='leaderboard') loadLeaderboard();
+  if(name==='agents') loadAgentsGrid();
+  if(name==='simulator') loadSimAgents();
+  if(name==='tiers') loadTiers();
+}
+
+// ─── LEADERBOARD ─────────────────────────────────────────────
+async function loadLeaderboard(){
+  document.getElementById('leaderboardRows').innerHTML='<div class="spinner"></div>';
+  document.getElementById('lbYear').textContent = currentYear;
+  try {
+    const d = await api(`/comp/dashboard?fiscal_year=${currentYear}&limit=50`);
+    renderOfficeTotals(d.office_totals);
+    renderLeaderboard(d.leaderboard);
+  } catch(e){ toast('שגיאה בטעינת לידרבורד: '+e.message, true); }
+}
+
+function renderOfficeTotals(t){
+  document.getElementById('officeTotals').innerHTML = `
+    <div class="card-sm"><div class="stat-label">סה״כ GCI משרד</div><div class="stat-val">${fmt(t.total_gci)}</div></div>
+    <div class="card-sm"><div class="stat-label">רווח סוכנים (סה״כ)</div><div class="stat-val" style="color:#22c55e">${fmt(t.total_agent_earnings)}</div></div>
+    <div class="card-sm"><div class="stat-label">רווח משרד נטו</div><div class="stat-val" style="color:#7c83f5">${fmt(t.total_office_earnings_net)}</div></div>
+    <div class="card-sm"><div class="stat-label">תגמול מאמנים</div><div class="stat-val" style="color:#f59e0b">${fmt(t.total_trainer_overrides)}</div></div>`;
+}
+
+function renderLeaderboard(rows){
+  if(!rows.length){
+    document.getElementById('leaderboardRows').innerHTML='<div class="empty">אין נתונים לשנה זו</div>';
+    return;
+  }
+  document.getElementById('leaderboardRows').innerHTML = rows.map(r=>{
+    const gap = r.gap_to_next_tier > 0 ? `<span style="font-size:.75rem;color:#9ea3c8"> עוד ${fmt(r.gap_to_next_tier)}</span>` : '<span style="color:#22c55e;font-size:.75rem"> ✓ מקסימום</span>';
+    return `<div class="lb-row" onclick="openAgentDetail(${r.agent_id})">
+      <div class="lb-rank ${r.rank<=3?'r'+r.rank:''}">${r.rank}</div>
+      <div><div class="lb-name">${r.name_he}</div><div style="font-size:.75rem;color:#9ea3c8">${r.name_en||''}</div></div>
+      <div class="lb-gci">${fmt(r.ytd_gci)}</div>
+      <div>
+        <div class="prog-wrap"><div class="prog-bar ${progClass(r.current_tier)}" style="width:${Math.min(r.progress_pct,100)}%"></div></div>
+        <div style="font-size:.72rem;color:#9ea3c8">${fmtPct(r.progress_pct)}${gap}</div>
+      </div>
+      <div>${tierBadge(r.current_tier, r.current_tier_he)}</div>
+      <div class="lb-count">${r.transaction_count}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── AGENT DETAIL ─────────────────────────────────────────────
+async function openAgentDetail(id){
+  showView('agent-detail');
+  document.getElementById('agentDetailContent').innerHTML='<div class="spinner"></div>';
+  try {
+    const d = await api(`/comp/dashboard/${id}?fiscal_year=${currentYear}`);
+    renderAgentDetail(d);
+  } catch(e){ toast('שגיאה: '+e.message, true); }
+}
+
+function renderAgentDetail(d){
+  const a = d.agent;
+  const ct = d.current_tier;
+  const nt = d.next_tier;
+
+  const trainerBlock = d.trainer ? `
+    <div class="card-sm" style="margin-top:12px">
+      <div class="sec-title">מאמן</div>
+      <div>${d.trainer.name_he}</div>
+      <div style="font-size:.8rem;color:#9ea3c8">
+        שיעור override: ${d.agent.trainer_pct}%
+        ${d.trainer_override_active ? ' • <span style="color:#22c55e">פעיל</span>' : ' • <span style="color:#9ea3c8">לא פעיל</span>'}
+        ${d.trainer_override_expires ? ' • פג: '+d.trainer_override_expires : ''}
+        ${d.trainer_overrides_remaining != null ? ' • נותרו: '+d.trainer_overrides_remaining+' עסקאות' : ''}
+      </div>
+    </div>` : '';
+
+  const progressPct = nt ? Math.min(nt.progress_pct, 100) : 100;
+  const progressBar = `
+    <div style="margin:12px 0">
+      <div style="display:flex;justify-content:space-between;font-size:.8rem;color:#9ea3c8;margin-bottom:4px">
+        <span>${ct.tier_name_he || ct.tier_name}</span>
+        ${nt ? `<span>יעד: ${nt.name_he||nt.name} — עוד ${fmt(nt.gap)}</span>` : '<span style="color:#22c55e">✓ הרמה הגבוהה ביותר</span>'}
+      </div>
+      <div class="prog-wrap" style="height:14px">
+        <div class="prog-bar ${progClass(ct.tier_name)}" style="width:${progressPct}%"></div>
+      </div>
+      <div style="text-align:center;font-size:.78rem;color:#9ea3c8;margin-top:3px">${fmtPct(progressPct)} ${nt?'לרמת '+( nt.name_he||nt.name):''}</div>
+    </div>`;
+
+  const splitAgent = d.ytd_gci > 0 ? (d.ytd_agent_earnings/d.ytd_gci*100).toFixed(1) : 0;
+  const splitOffice = d.ytd_gci > 0 ? (d.ytd_office_earnings_net/d.ytd_gci*100).toFixed(1) : 0;
+
+  const recentTxns = d.recent_transactions.length ? `
+    <div class="card" style="margin-top:16px">
+      <div class="sec-title">5 עסקאות אחרונות</div>
+      <table>
+        <thead><tr><th>תאריך</th><th>כתובת</th><th>עמלה ברוטו</th><th>לסוכן</th><th>למשרד</th><th>רמה</th></tr></thead>
+        <tbody>
+          ${d.recent_transactions.map(t=>`
+            <tr>
+              <td>${t.deal_date}</td>
+              <td>${t.property_address||'—'} ${t.property_city||''}</td>
+              <td>${fmt(t.gross_commission)}</td>
+              <td style="color:#22c55e">${fmt(t.agent_amount)}</td>
+              <td style="color:#7c83f5">${fmt(t.office_amount_net)}</td>
+              <td>${tierBadge(t.tier_at_time,t.tier_at_time)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  document.getElementById('agentDetailContent').innerHTML = `
+    <div class="g2">
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+            <div>
+              <div style="font-size:1.4rem;font-weight:700">${a.name_he}</div>
+              <div style="color:#9ea3c8;font-size:.85rem">${a.name_en||''} ${a.license_number?'• רישיון: '+a.license_number:''}</div>
+            </div>
+            ${tierBadge(ct.tier_name, ct.tier_name_he)}
+          </div>
+          <div style="font-size:2.2rem;font-weight:800;color:#e8eaf6">${fmt(d.ytd_gci)}</div>
+          <div style="color:#9ea3c8;font-size:.8rem;margin-bottom:8px">GCI שנה ${d.fiscal_year}</div>
+          ${progressBar}
+          ${trainerBlock}
+        </div>
+      </div>
+      <div>
+        <div class="g2" style="margin-bottom:16px">
+          <div class="card-sm">
+            <div class="stat-label">רווח סוכן</div>
+            <div class="stat-val" style="color:#22c55e">${fmt(d.ytd_agent_earnings)}</div>
+            <div class="stat-sub">${fmtPct(splitAgent)} מהGCI</div>
+          </div>
+          <div class="card-sm">
+            <div class="stat-label">רווח משרד נטו</div>
+            <div class="stat-val" style="color:#7c83f5">${fmt(d.ytd_office_earnings_net)}</div>
+            <div class="stat-sub">${fmtPct(splitOffice)} מהGCI</div>
+          </div>
+          <div class="card-sm">
+            <div class="stat-label">עסקאות</div>
+            <div class="stat-val">${d.transaction_count}</div>
+          </div>
+          <div class="card-sm">
+            <div class="stat-label">תגמול מאמן</div>
+            <div class="stat-val" style="color:#f59e0b">${fmt(d.ytd_trainer_overrides_paid)}</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-title">פיצול עמלות</div>
+          <div class="split-row">
+            <div class="split-label">סוכן</div>
+            <div class="split-bar-wrap"><div class="split-bar-fill" style="width:${splitAgent}%;background:#22c55e"></div></div>
+            <div class="split-val" style="color:#22c55e">${fmt(d.ytd_agent_earnings)}</div>
+          </div>
+          <div class="split-row">
+            <div class="split-label">משרד</div>
+            <div class="split-bar-wrap"><div class="split-bar-fill" style="width:${splitOffice}%;background:#7c83f5"></div></div>
+            <div class="split-val" style="color:#7c83f5">${fmt(d.ytd_office_earnings_net)}</div>
+          </div>
+          ${d.ytd_trainer_overrides_paid>0?`<div class="split-row">
+            <div class="split-label">מאמן</div>
+            <div class="split-bar-wrap"><div class="split-bar-fill" style="width:${(d.ytd_trainer_overrides_paid/d.ytd_gci*100).toFixed(1)}%;background:#f59e0b"></div></div>
+            <div class="split-val" style="color:#f59e0b">${fmt(d.ytd_trainer_overrides_paid)}</div>
+          </div>`:''}
+          <div style="margin-top:14px">
+            <button class="btn btn-success" onclick="openAddTxn(${a.id})">+ הוסף עסקה לסוכן זה</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    ${recentTxns}`;
+}
+
+// ─── AGENTS GRID ─────────────────────────────────────────────
+async function loadAgentsGrid(){
+  document.getElementById('agentGrid').innerHTML='<div class="spinner"></div>';
+  try {
+    const d = await api('/comp/agents');
+    allAgents = d.agents;
+    document.getElementById('agentGrid').innerHTML = d.agents.map(a=>`
+      <div class="card" style="cursor:pointer" onclick="openAgentDetail(${a.id})">
+        <div style="font-size:1rem;font-weight:700;margin-bottom:4px">${a.name_he}</div>
+        <div style="font-size:.8rem;color:#9ea3c8">${a.email||''}</div>
+        <div style="font-size:.8rem;color:#9ea3c8">${a.phone||''}</div>
+        ${a.license_number?`<div style="font-size:.78rem;color:#9ea3c8;margin-top:4px">רישיון: ${a.license_number}</div>`:''}
+        ${a.trainer_id?`<div style="font-size:.78rem;color:#f59e0b;margin-top:6px">📚 תחת מאמן</div>`:''}
+      </div>`).join('');
+  } catch(e){ toast(e.message, true); }
+}
+
+// ─── TIERS ────────────────────────────────────────────────────
+async function loadTiers(){
+  try {
+    const d = await api('/comp/tiers');
+    allTiers = d.tiers;
+    document.getElementById('tiersContent').innerHTML = `
+      <div class="card">
+        <div class="sec-title">מדרגות תגמול</div>
+        <table>
+          <thead><tr><th>רמה</th><th>GCI מינימום</th><th>GCI מקסימום</th><th>חלק סוכן</th><th>חלק משרד</th></tr></thead>
+          <tbody>
+            ${d.tiers.filter(t=>t.is_active).map(t=>`
+              <tr>
+                <td>${tierBadge(t.tier_name, t.tier_name_he)}</td>
+                <td>${fmt(t.min_gci)}</td>
+                <td>${t.max_gci ? fmt(t.max_gci) : '∞ ללא הגבלה'}</td>
+                <td style="color:#22c55e;font-weight:700">${t.agent_pct}%</td>
+                <td style="color:#7c83f5;font-weight:700">${t.office_pct}%</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="sec-title">סימולציה: כמה מרוויח סוכן לפי GCI שנתי</div>
+        <table>
+          <thead><tr><th>GCI שנתי</th><th>רמה</th><th>% לסוכן</th><th>רווח סוכן</th><th>רווח משרד</th></tr></thead>
+          <tbody id="tierSimTable"></tbody>
+        </table>
+      </div>`;
+    // fill simulation table
+    const checkpoints = [100000,200000,300000,400000,500000,700000,1000000,1500000];
+    const rows = await Promise.all(checkpoints.map(gci=>
+      api('/comp/simulate',{method:'POST',body:JSON.stringify({starting_ytd_gci:0, additional_gci:gci})})
+    ));
+    document.getElementById('tierSimTable').innerHTML = rows.map((r,i)=>{
+      const s = r.simulation;
+      return `<tr>
+        <td>${fmt(checkpoints[i])}</td>
+        <td>${tierBadge(s.tier_at_end, s.tier_at_end)}</td>
+        <td>${fmtPct(s.effective_agent_pct)}</td>
+        <td style="color:#22c55e">${fmt(s.agent_earnings)}</td>
+        <td style="color:#7c83f5">${fmt(s.office_earnings)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e){ toast(e.message, true); }
+}
+
+// ─── SIMULATOR ────────────────────────────────────────────────
+async function loadSimAgents(){
+  try {
+    const d = await api('/comp/agents');
+    allAgents = d.agents;
+    const sel = document.getElementById('simAgent');
+    sel.innerHTML = '<option value="">— ידני —</option>';
+    d.agents.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.name_he; sel.appendChild(o); });
+  } catch(e){}
+}
+
+async function onSimAgentChange(){
+  const id = document.getElementById('simAgent').value;
+  if(!id){ document.getElementById('simYtd').value=0; return; }
+  try {
+    const d = await api(`/comp/dashboard/${id}?fiscal_year=${currentYear}`);
+    document.getElementById('simYtd').value = d.ytd_gci;
+    runSim();
+  } catch(e){}
+}
+
+async function runSim(){
+  const ytd = +document.getElementById('simYtd').value||0;
+  const extra = +document.getElementById('simExtra').value||0;
+  if(extra<=0){ document.getElementById('simResult').innerHTML='<div class="empty">הזן סכום עמלה חיובי</div>'; return; }
+  try {
+    const d = await api('/comp/simulate',{method:'POST',body:JSON.stringify({starting_ytd_gci:ytd, additional_gci:extra})});
+    const s = d.simulation;
+    document.getElementById('simResult').innerHTML = `
+      <div class="sec-title">תוצאת סימולציה</div>
+      <div class="g2" style="margin-bottom:16px">
+        <div><div class="stat-label">לסוכן</div><div class="stat-val" style="color:#22c55e">${fmt(s.agent_earnings)}</div><div class="stat-sub">${fmtPct(s.effective_agent_pct)} ממוצע</div></div>
+        <div><div class="stat-label">למשרד</div><div class="stat-val" style="color:#7c83f5">${fmt(s.office_earnings)}</div></div>
+      </div>
+      <div><div class="stat-label">GCI לאחר עסקה</div><div style="font-weight:700">${fmt(s.ending_ytd_gci)} — ${tierBadge(s.tier_at_end,s.tier_at_end)}</div></div>
+      ${s.next_tier_after_this?`<div style="margin-top:8px;font-size:.82rem;color:#f59e0b">⚡ עוד ${fmt(s.next_tier_after_this.gap_remaining)} ל${s.next_tier_after_this.name_he||s.next_tier_after_this.name} (${s.next_tier_after_this.agent_pct}%)</div>`:'<div style="margin-top:8px;font-size:.82rem;color:#22c55e">🏆 הגעת לרמה הגבוהה ביותר!</div>'}
+      <div style="margin-top:16px">
+        <div class="sec-title">פירוט לפי מדרגות</div>
+        ${s.tiers_crossed.map(t=>`
+          <div class="tier-chunk">
+            ${tierBadge(t.tier,t.tier_he)}
+            <span style="color:#9ea3c8">${fmt(t.portion)}</span>
+            <span>×</span><span style="color:#22c55e">${t.agent_pct}%</span>
+            <span style="color:#9ea3c8">=</span>
+            <span style="color:#22c55e;font-weight:700">${fmt(t.agent_cut)}</span>
+            <span style="color:#9ea3c8;margin-right:auto">(משרד: ${fmt(t.office_cut)})</span>
+          </div>`).join('')}
+      </div>`;
+  } catch(e){ document.getElementById('simResult').innerHTML=`<div class="empty" style="color:#ef4444">${e.message}</div>`; }
+}
+
+// ─── ADD TRANSACTION ──────────────────────────────────────────
+function openAddTxn(preAgentId){
+  populateAgentSelects();
+  document.getElementById('txnDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('txnAmount').value = '';
+  document.getElementById('txnAddr').value = '';
+  document.getElementById('txnCity').value = '';
+  document.getElementById('txnNotes').value = '';
+  document.getElementById('txnPreview').innerHTML = '';
+  if(preAgentId) document.getElementById('txnAgent').value = preAgentId;
+  document.getElementById('modalTxn').classList.remove('hidden');
+}
+function closeTxnModal(){ document.getElementById('modalTxn').classList.add('hidden'); }
+
+async function onTxnAgentChange(){ onTxnAmountChange(); }
+
+async function onTxnAmountChange(){
+  const agentId = document.getElementById('txnAgent').value;
+  const amount = +document.getElementById('txnAmount').value;
+  if(!agentId || amount<=0){ document.getElementById('txnPreview').innerHTML=''; return; }
+  try {
+    // simulate using current ytd for this agent
+    const dash = await api(`/comp/dashboard/${agentId}?fiscal_year=${currentYear}`);
+    const sim = await api('/comp/simulate',{method:'POST',body:JSON.stringify({starting_ytd_gci:dash.ytd_gci, additional_gci:amount})});
+    const s = sim.simulation;
+    document.getElementById('txnPreview').innerHTML = `
+      <div class="card-sm" style="background:#0e2520;border-color:#166534">
+        <div style="font-size:.78rem;color:#9ea3c8;margin-bottom:8px">תצוגה מקדימה — חישוב עמלה</div>
+        <div class="g2">
+          <div><div class="stat-label">לסוכן</div><div style="font-weight:700;color:#22c55e">${fmt(s.agent_earnings)}</div></div>
+          <div><div class="stat-label">למשרד</div><div style="font-weight:700;color:#7c83f5">${fmt(s.office_earnings)}</div></div>
+        </div>
+        ${s.tiers_crossed.length>1?`<div style="font-size:.75rem;color:#f59e0b;margin-top:6px">⚡ חוצה ${s.tiers_crossed.length} מדרגות</div>`:''}
+        ${s.tier_at_end!==s.tier_at_start?`<div style="font-size:.75rem;color:#22c55e;margin-top:4px">🎉 תעלה ל${tierBadge(s.tier_at_end,s.tier_at_end)} אחרי העסקה הזו!</div>`:''}
+      </div>`;
+  } catch(e){}
+}
+
+async function submitTxn(){
+  const agent_id = +document.getElementById('txnAgent').value;
+  const gross_commission = +document.getElementById('txnAmount').value;
+  const deal_date = document.getElementById('txnDate').value;
+  if(!agent_id||!gross_commission||!deal_date){ toast('חסרים שדות חובה',true); return; }
+  try {
+    await api('/comp/transactions',{method:'POST',body:JSON.stringify({
+      agent_id, gross_commission, deal_date,
+      property_address: document.getElementById('txnAddr').value,
+      property_city: document.getElementById('txnCity').value,
+      notes: document.getElementById('txnNotes').value,
+    })});
+    toast('✅ העסקה נשמרה בהצלחה!');
+    closeTxnModal();
+    loadLeaderboard();
+  } catch(e){ toast('שגיאה: '+e.message, true); }
+}
+
+// ─── ADD AGENT ────────────────────────────────────────────────
+function openAddAgent(){
+  populateAgentSelects();
+  document.getElementById('agentNameHe').value='';
+  document.getElementById('agentNameEn').value='';
+  document.getElementById('agentEmail').value='';
+  document.getElementById('agentPhone').value='';
+  document.getElementById('agentLicense').value='';
+  document.getElementById('modalAgent').classList.remove('hidden');
+}
+function closeAgentModal(){ document.getElementById('modalAgent').classList.add('hidden'); }
+
+async function submitAgent(){
+  const name_he = document.getElementById('agentNameHe').value.trim();
+  if(!name_he){ toast('שם בעברית הוא שדה חובה',true); return; }
+  try {
+    await api('/comp/agents',{method:'POST',body:JSON.stringify({
+      name_he,
+      name_en: document.getElementById('agentNameEn').value||undefined,
+      email: document.getElementById('agentEmail').value||undefined,
+      phone: document.getElementById('agentPhone').value||undefined,
+      license_number: document.getElementById('agentLicense').value||undefined,
+    })});
+    toast('✅ הסוכן נוסף בהצלחה!');
+    closeAgentModal();
+    const d = await api('/comp/agents');
+    allAgents = d.agents;
+  } catch(e){ toast('שגיאה: '+e.message, true); }
+}
+
+async function populateAgentSelects(){
+  if(!allAgents.length){
+    try { const d=await api('/comp/agents'); allAgents=d.agents; } catch(e){}
+  }
+  ['txnAgent','agentTrainer'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const cur=el.value;
+    el.innerHTML=id==='agentTrainer'?'<option value="">ללא מאמן</option>':'<option value="">בחר סוכן...</option>';
+    allAgents.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.name_he; el.appendChild(o); });
+    if(cur) el.value=cur;
+  });
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+initYear();
+showView('leaderboard');
+</script>
+</body>
+</html>

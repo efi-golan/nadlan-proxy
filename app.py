@@ -4,7 +4,7 @@ Nadlan Proxy Server v4
 """
 import os, json, logging
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from compensation import compensation_bp, init_db
 
@@ -32,6 +32,11 @@ def gov_get(resource_id, filters=None, q=None, limit=10, sort=None):
     r = SESSION.get(GOV_API, params=params, timeout=20)
     r.raise_for_status()
     return r.json()
+
+@app.route("/")
+@app.route("/dashboard")
+def dashboard():
+    return send_from_directory("static", "index.html")
 
 @app.route("/health")
 def health():
