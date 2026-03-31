@@ -593,7 +593,7 @@ async function loadTiers(){
       <div class="card" style="margin-top:16px">
         <div class="sec-title">סימולציה: כמה מרוויח סוכן לפי GCI שנתי</div>
         <table>
-          <thead><tr><th>GCI שנתי</th><th>רמה</th><th>% לסוכן</th><th>רווח סוכן</th><th>רווח משרד</th></tr></thead>
+          <thead><tr><th>GCI שנתי</th><th>רמה</th><th>% לסוכן</th><th style="color:#22c55e">מזומן לסוכן</th><th style="color:#f59e0b">שיווק</th><th>סה״כ לסוכן</th><th style="color:#7c83f5">למשרד</th></tr></thead>
           <tbody id="tierSimTable"></tbody>
         </table>
       </div>`;
@@ -604,13 +604,15 @@ async function loadTiers(){
     ));
     document.getElementById('tierSimTable').innerHTML = rows.map((r,i)=>{
       const s = r.simulation;
-      return `<tr>
-        <td>${fmt(checkpoints[i])}</td>
-        <td>${tierBadge(s.tier_at_end, s.tier_at_end)}</td>
-        <td>${fmtPct(s.effective_agent_pct)}</td>
-        <td style="color:#22c55e">${fmt(s.agent_earnings)}</td>
-        <td style="color:#7c83f5">${fmt(s.office_earnings)}</td>
-      </tr>`;
+      return '<tr>'
+        +'<td>'+fmt(checkpoints[i])+'</td>'
+        +'<td>'+tierBadge(s.tier_at_end, s.tier_at_end)+'</td>'
+        +'<td>'+fmtPct(s.effective_agent_pct)+'</td>'
+        +'<td style="color:#22c55e">'+fmt(s.agent_cash_earnings)+'</td>'
+        +'<td style="color:#f59e0b">'+fmt(s.agent_marketing_budget)+'</td>'
+        +'<td style="color:#e8eaf6;font-weight:700">'+fmt(s.agent_earnings)+'</td>'
+        +'<td style="color:#7c83f5">'+fmt(s.office_earnings)+'</td>'
+        +'</tr>';
     }).join('');
   } catch(e){ toast(e.message, true); }
 }
@@ -643,26 +645,23 @@ async function runSim(){
   try {
     const d = await api('/comp/simulate',{method:'POST',body:JSON.stringify({starting_ytd_gci:ytd, additional_gci:extra})});
     const s = d.simulation;
-    document.getElementById('simResult').innerHTML = `
-      <div class="sec-title">תוצאת סימולציה</div>
-      <div class="g2" style="margin-bottom:16px">
-        <div><div class="stat-label">לסוכן</div><div class="stat-val" style="color:#22c55e">${fmt(s.agent_earnings)}</div><div class="stat-sub">${fmtPct(s.effective_agent_pct)} ממוצע</div></div>
-        <div><div class="stat-label">למשרד</div><div class="stat-val" style="color:#7c83f5">${fmt(s.office_earnings)}</div></div>
-      </div>
-      <div><div class="stat-label">GCI לאחר עסקה</div><div style="font-weight:700">${fmt(s.ending_ytd_gci)} — ${tierBadge(s.tier_at_end,s.tier_at_end)}</div></div>
-      ${s.next_tier_after_this?`<div style="margin-top:8px;font-size:.82rem;color:#f59e0b">⚡ עוד ${fmt(s.next_tier_after_this.gap_remaining)} ל${s.next_tier_after_this.name_he||s.next_tier_after_this.name} (${s.next_tier_after_this.agent_pct}%)</div>`:'<div style="margin-top:8px;font-size:.82rem;color:#22c55e">🏆 הגעת לרמה הגבוהה ביותר!</div>'}
-      <div style="margin-top:16px">
-        <div class="sec-title">פירוט לפי מדרגות</div>
-        ${s.tiers_crossed.map(t=>`
-          <div class="tier-chunk">
-            ${tierBadge(t.tier,t.tier_he)}
-            <span style="color:#9ea3c8">${fmt(t.portion)}</span>
-            <span>×</span><span style="color:#22c55e">${t.agent_pct}%</span>
-            <span style="color:#9ea3c8">=</span>
-            <span style="color:#22c55e;font-weight:700">${fmt(t.agent_cut)}</span>
-            <span style="color:#9ea3c8;margin-right:auto">(משרד: ${fmt(t.office_cut)})</span>
-          </div>`).join('')}
-      </div>`;
+    const hasMkt = s.agent_marketing_budget > 0;
+    document.getElementById('simResult').innerHTML =
+      '<div class="sec-title">תוצאת סימולציה</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'
+      +'<div style="background:#0e2a1a;padding:12px;border-radius:8px;border:1px solid #166534"><div class="stat-label">מזומן לסוכן</div><div class="stat-val" style="color:#22c55e">'+fmt(s.agent_cash_earnings)+'</div><div class="stat-sub">50% בסיס</div></div>'
+      +(hasMkt?'<div style="background:#1a1a0e;padding:12px;border-radius:8px;border:1px solid #854d0e"><div class="stat-label">תקציב שיווק</div><div class="stat-val" style="color:#f59e0b">'+fmt(s.agent_marketing_budget)+'</div><div class="stat-sub">נשמר למשרד עבורך</div></div>':'<div style="background:#111827;padding:12px;border-radius:8px;border:1px solid #1f2937;opacity:.4"><div class="stat-label">תקציב שיווק</div><div class="stat-val" style="color:#9ea3c8">₪0</div><div class="stat-sub">עדיין ב-Bronze</div></div>')
+      +'<div style="background:#0e1629;padding:12px;border-radius:8px;border:1px solid #1e3a5f"><div class="stat-label">למשרד</div><div class="stat-val" style="color:#7c83f5">'+fmt(s.office_earnings)+'</div></div>'
+      +'</div>'
+      +'<div style="background:#111827;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.88rem">'
+      +'<span style="color:#9ea3c8">סה״כ לסוכן (מזומן + שיווק): </span><span style="font-weight:700;color:#22c55e">'+fmt(s.agent_earnings)+'</span>'
+      +'<span style="color:#9ea3c8;margin-right:16px"> | ממוצע אפקטיבי: </span><span style="font-weight:700">'+fmtPct(s.effective_agent_pct)+'</span>'
+      +'</div>'
+      +'<div><div class="stat-label">GCI לאחר עסקה</div><div style="font-weight:700">'+fmt(s.ending_ytd_gci)+' — '+tierBadge(s.tier_at_end,s.tier_at_end)+'</div></div>'
+      +(s.next_tier_after_this?'<div style="margin-top:8px;font-size:.82rem;color:#f59e0b">⚡ עוד '+fmt(s.next_tier_after_this.gap_remaining)+' ל'+(s.next_tier_after_this.name_he||s.next_tier_after_this.name)+' ('+s.next_tier_after_this.agent_pct+'%)</div>':'<div style="margin-top:8px;font-size:.82rem;color:#22c55e">🏆 הגעת לרמה הגבוהה ביותר!</div>')
+      +'<div style="margin-top:16px"><div class="sec-title">פירוט לפי מדרגות</div>'
+      +s.tiers_crossed.map(t=>'<div class="tier-chunk">'+tierBadge(t.tier,t.tier_he)+'<span style="color:#9ea3c8">'+fmt(t.portion)+'</span><span>×</span><span style="color:#22c55e">'+t.agent_pct+'%</span><span style="color:#9ea3c8">=</span><span style="color:#22c55e;font-weight:700">'+fmt(t.agent_cut)+'</span>'+(t.marketing_cut>0?'<span style="color:#f59e0b;font-size:.75rem"> ('+fmt(t.agent_cash_cut)+' מזומן + '+fmt(t.marketing_cut)+' שיווק)</span>':'')+'<span style="color:#9ea3c8;margin-right:auto">(משרד: '+fmt(t.office_cut)+')</span></div>').join('')
+      +'</div>';
   } catch(e){ document.getElementById('simResult').innerHTML=`<div class="empty" style="color:#ef4444">${e.message}</div>`; }
 }
 
@@ -694,10 +693,12 @@ async function onTxnAmountChange(){
     document.getElementById('txnPreview').innerHTML = `
       <div class="card-sm" style="background:#0e2520;border-color:#166534">
         <div style="font-size:.78rem;color:#9ea3c8;margin-bottom:8px">תצוגה מקדימה — חישוב עמלה</div>
-        <div class="g2">
-          <div><div class="stat-label">לסוכן</div><div style="font-weight:700;color:#22c55e">${fmt(s.agent_earnings)}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div><div class="stat-label">מזומן לסוכן</div><div style="font-weight:700;color:#22c55e">${fmt(s.agent_cash_earnings)}</div></div>
+          <div><div class="stat-label">שיווק</div><div style="font-weight:700;color:#f59e0b">${fmt(s.agent_marketing_budget)}</div></div>
           <div><div class="stat-label">למשרד</div><div style="font-weight:700;color:#7c83f5">${fmt(s.office_earnings)}</div></div>
         </div>
+        <div style="font-size:.75rem;color:#9ea3c8;margin-top:6px">סה״כ לסוכן: <b style="color:#22c55e">${fmt(s.agent_earnings)}</b></div>
         ${s.tiers_crossed.length>1?`<div style="font-size:.75rem;color:#f59e0b;margin-top:6px">⚡ חוצה ${s.tiers_crossed.length} מדרגות</div>`:''}
         ${s.tier_at_end!==s.tier_at_start?`<div style="font-size:.75rem;color:#22c55e;margin-top:4px">🎉 תעלה ל${tierBadge(s.tier_at_end,s.tier_at_end)} אחרי העסקה הזו!</div>`:''}
       </div>`;

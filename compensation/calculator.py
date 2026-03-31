@@ -31,7 +31,9 @@ class TierPortion:
 class CommissionResult:
     agent_id: int
     gross_commission: float
-    agent_amount: float
+    agent_amount: float                 # total agent share (cash + marketing)
+    agent_cash_amount: float            # cash directly to agent (50% base)
+    marketing_amount: float             # portion held as agent marketing budget
     office_amount_gross: float          # before trainer override
     office_amount_net: float            # after trainer override
     trainer_override: float
@@ -189,6 +191,11 @@ def calculate_commission(agent_id: int, gross_commission: float, deal_date: date
         agent_cut = round(portion * tier.agent_pct / 100, 2)
         office_cut = round(portion * tier.office_pct / 100, 2)
 
+        # Marketing budget = the portion above the base 50% rate
+        # i.e. for Silver (60%): 10% of this portion goes to marketing
+        marketing_cut = round(portion * max(tier.agent_pct - 50.0, 0.0) / 100, 2)
+        cash_cut = round(agent_cut - marketing_cut, 2)
+
         agent_amount += agent_cut
         office_amount += office_cut
         tiers_crossed.append(TierPortion(
@@ -206,6 +213,13 @@ def calculate_commission(agent_id: int, gross_commission: float, deal_date: date
 
     agent_amount = round(agent_amount, 2)
     office_amount = round(office_amount, 2)
+
+    # Marketing budget = total above-50% portion across all tiers
+    marketing_amount = round(sum(
+        tp.portion * max(tp.agent_pct - 50.0, 0.0) / 100
+        for tp in tiers_crossed
+    ), 2)
+    agent_cash_amount = round(agent_amount - marketing_amount, 2)
 
     # Blended effective percentages (for snapshot storage)
     agent_split_pct = round(agent_amount / gross_commission * 100, 4) if gross_commission else 0.0
@@ -230,6 +244,8 @@ def calculate_commission(agent_id: int, gross_commission: float, deal_date: date
         agent_id=agent_id,
         gross_commission=gross_commission,
         agent_amount=agent_amount,
+        agent_cash_amount=agent_cash_amount,
+        marketing_amount=marketing_amount,
         office_amount_gross=office_amount,
         office_amount_net=round(office_amount - trainer_override, 2),
         trainer_override=trainer_override,
@@ -271,6 +287,8 @@ def simulate_earnings(starting_ytd_gci: float, additional_gci: float) -> dict:
 
         agent_cut = round(portion * tier.agent_pct / 100, 2)
         office_cut = round(portion * tier.office_pct / 100, 2)
+        marketing_cut = round(portion * max(tier.agent_pct - 50.0, 0.0) / 100, 2)
+        cash_cut = round(agent_cut - marketing_cut, 2)
         agent_amount += agent_cut
         office_amount += office_cut
         tiers_crossed.append({
@@ -279,6 +297,8 @@ def simulate_earnings(starting_ytd_gci: float, additional_gci: float) -> dict:
             "portion": round(portion, 2),
             "agent_pct": tier.agent_pct,
             "agent_cut": agent_cut,
+            "agent_cash_cut": cash_cut,
+            "marketing_cut": marketing_cut,
             "office_cut": office_cut,
         })
         cursor += portion
@@ -301,11 +321,16 @@ def simulate_earnings(starting_ytd_gci: float, additional_gci: float) -> dict:
             }
             break
 
+    total_marketing = round(sum(t["marketing_cut"] for t in tiers_crossed), 2)
+    total_cash = round(agent_amount - total_marketing, 2)
+
     return {
         "starting_ytd_gci": starting_ytd_gci,
         "ending_ytd_gci": round(ending_ytd, 2),
         "gross_commission_simulated": additional_gci,
         "agent_earnings": round(agent_amount, 2),
+        "agent_cash_earnings": total_cash,
+        "agent_marketing_budget": total_marketing,
         "office_earnings": round(office_amount, 2),
         "effective_agent_pct": effective_agent_pct,
         "tiers_crossed": tiers_crossed,

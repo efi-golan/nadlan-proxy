@@ -54,4 +54,16 @@ def _migrate(database):
         for col, sql in new_cols.items():
             if col not in existing:
                 conn.execute(database.text(sql))
+
+        # Migrate transactions table
+        txn_existing = {row[1] for row in conn.execute(
+            database.text("PRAGMA table_info(transactions)")
+        )}
+        txn_cols = {
+            "agent_cash_amount": "ALTER TABLE transactions ADD COLUMN agent_cash_amount REAL",
+            "marketing_amount":  "ALTER TABLE transactions ADD COLUMN marketing_amount REAL",
+        }
+        for col, sql in txn_cols.items():
+            if col not in txn_existing:
+                conn.execute(database.text(sql))
         conn.commit()

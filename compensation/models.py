@@ -86,7 +86,9 @@ class Transaction(db.Model):
     # Snapshotted at recording time — immutable audit trail
     agent_split_pct   = db.Column(db.Float, nullable=False)
     office_split_pct  = db.Column(db.Float, nullable=False)
-    agent_amount      = db.Column(db.Float, nullable=False)
+    agent_amount      = db.Column(db.Float, nullable=False)   # total agent share (cash + marketing)
+    agent_cash_amount = db.Column(db.Float, nullable=True)    # cash to agent (always 50% base)
+    marketing_amount  = db.Column(db.Float, nullable=True)    # portion invested in agent marketing
     office_amount     = db.Column(db.Float, nullable=False)   # before trainer override
     trainer_override  = db.Column(db.Float, nullable=False, default=0.0)
     tier_at_time      = db.Column(db.Text, nullable=False)
@@ -114,6 +116,8 @@ class Transaction(db.Model):
             "agent_split_pct": self.agent_split_pct,
             "office_split_pct": self.office_split_pct,
             "agent_amount": self.agent_amount,
+            "agent_cash_amount": self.agent_cash_amount if self.agent_cash_amount is not None else self.agent_amount,
+            "marketing_amount": self.marketing_amount or 0.0,
             "office_amount": self.office_amount,
             "office_amount_net": round(self.office_amount - self.trainer_override, 2),
             "trainer_override": self.trainer_override,
