@@ -482,25 +482,20 @@ function renderAgentDetail(d){
           <div style="font-size:2.2rem;font-weight:800;color:#e8eaf6">${fmt(d.ytd_gci)}</div>
           <div style="color:#9ea3c8;font-size:.8rem;margin-bottom:8px">GCI שנה ${d.fiscal_year} ${a.office_tab?'<span style="background:#1e2136;padding:1px 8px;border-radius:4px;margin-right:6px">'+a.office_tab+'</span>':''}</div>
           ${progressBar}
-          ${(()=>{
-            if(!a.target_annual) return '';
+          ${!a.target_annual ? '' : (()=>{
             const tPct = Math.min(d.ytd_gci/a.target_annual*100, 100).toFixed(1);
             const tColor = tPct>=100?'#22c55e':tPct>=70?'#f59e0b':'#ef4444';
             const remaining = Math.max(a.target_annual - d.ytd_gci, 0);
-            return \`<div style="margin:12px 0;padding:12px;background:#0f1117;border-radius:8px;border:1px solid #2d3148">
-              <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#9ea3c8;margin-bottom:6px">
-                <span>יעד שנתי 2026</span><span style="color:\${tColor};font-weight:700">\${tPct}%</span>
-              </div>
-              <div class="prog-wrap" style="height:12px">
-                <div style="height:100%;border-radius:6px;background:\${tColor};width:\${tPct}%"></div>
-              </div>
-              <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.78rem">
-                <span style="color:\${tColor};font-weight:700">\${fmt(d.ytd_gci)}</span>
-                <span style="color:#9ea3c8">יעד: \${fmt(a.target_annual)}</span>
-              </div>
-              \${remaining>0?\`<div style="font-size:.75rem;color:#9ea3c8;margin-top:4px">נשאר להשלמת יעד: <b style="color:#f59e0b">\${fmt(remaining)}</b></div>\`:'<div style="font-size:.75rem;color:#22c55e;margin-top:4px">🏆 יעד שנתי הושג!</div>'}
-              \${a.target_quarterly?\`<div style="font-size:.75rem;color:#9ea3c8;margin-top:2px">יעד רבעוני: \${fmt(a.target_quarterly)}</div>\`:''}
-            </div>\`;
+            return '<div style="margin:12px 0;padding:12px;background:#0f1117;border-radius:8px;border:1px solid #2d3148">'
+              +'<div style="display:flex;justify-content:space-between;font-size:.78rem;color:#9ea3c8;margin-bottom:6px">'
+              +'<span>יעד שנתי '+d.fiscal_year+'</span><span style="color:'+tColor+';font-weight:700">'+tPct+'%</span></div>'
+              +'<div class="prog-wrap" style="height:12px"><div style="height:100%;border-radius:6px;background:'+tColor+';width:'+tPct+'%"></div></div>'
+              +'<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.78rem">'
+              +'<span style="color:'+tColor+';font-weight:700">'+fmt(d.ytd_gci)+'</span>'
+              +'<span style="color:#9ea3c8">יעד: '+fmt(a.target_annual)+'</span></div>'
+              +(remaining>0?'<div style="font-size:.75rem;color:#9ea3c8;margin-top:4px">נשאר להשלמת יעד: <b style="color:#f59e0b">'+fmt(remaining)+'</b></div>':'<div style="font-size:.75rem;color:#22c55e;margin-top:4px">🏆 יעד שנתי הושג!</div>')
+              +(a.target_quarterly?'<div style="font-size:.75rem;color:#9ea3c8;margin-top:2px">יעד רבעוני: '+fmt(a.target_quarterly)+'</div>':'')
+              +'</div>';
           })()}
           ${trainerBlock}
         </div>
@@ -546,11 +541,9 @@ function renderAgentDetail(d){
           <div style="margin-top:14px">
             <div style="display:flex;gap:8px;margin-top:10px">
               <button class="btn btn-success" onclick="openAddTxn(${a.id})">+ הוסף עסקה</button>
-              <button class="btn btn-outline" onclick="ensureAdminKey();openSplitModal(${a.id},\`${a.name_he}\`,${a.override_threshold||'null'},${a.override_agent_pct||'null'})">⚙️ ספליט אישי</button>
+              <button class="btn btn-outline" onclick="ensureAdminKey();openSplitModal(${a.id},'${(a.name_he||'').replace(/'/g,"\\'")}',${a.override_threshold||'null'},${a.override_agent_pct||'null'})">⚙️ ספליט אישי</button>
             </div>
-            ${a.override_threshold?\`<div style="margin-top:8px;padding:8px 12px;background:#0e2520;border-radius:8px;font-size:.8rem;color:#22c55e;border:1px solid #166534">
-              ✓ ספליט אישי פעיל: מעל \${fmt(a.override_threshold)} → \${a.override_agent_pct}% לסוכן
-            </div>\`:''}
+            ${!a.override_threshold ? '' : '<div style="margin-top:8px;padding:8px 12px;background:#0e2520;border-radius:8px;font-size:.8rem;color:#22c55e;border:1px solid #166534">✓ ספליט אישי פעיל: מעל '+fmt(a.override_threshold)+' → '+a.override_agent_pct+'% לסוכן</div>'}
           </div>
         </div>
       </div>
