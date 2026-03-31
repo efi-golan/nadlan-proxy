@@ -333,7 +333,10 @@ async function loadLeaderboard(){
     renderOfficeTotals(d.office_totals);
     _allLeaderboardRows = d.leaderboard;
     filterTab(_activeTab);
-  } catch(e){ toast('שגיאה בטעינת לידרבורד: '+e.message, true); }
+  } catch(e){
+    document.getElementById('leaderboardRows').innerHTML='<div class="empty">שגיאה בטעינה: '+e.message+'</div>';
+    toast('שגיאה בטעינת לידרבורד: '+e.message, true);
+  }
 }
 
 function renderOfficeTotals(t){
@@ -361,7 +364,11 @@ function filterTab(tab){
 
 function renderLeaderboard(rows){
   if(!rows.length){
-    document.getElementById('leaderboardRows').innerHTML='<div class="empty">אין נתונים לשנה זו</div>';
+    document.getElementById('leaderboardRows').innerHTML=`<div class="empty" style="padding:40px 0">
+      <div style="font-size:1.1rem;margin-bottom:8px">אין סוכנים עדיין</div>
+      <div style="font-size:.85rem;color:#9ea3c8;margin-bottom:16px">הוסף סוכן ראשון או הגדר Zapier לסנכרון מגוגל שיטס</div>
+      <button class="btn btn-primary" onclick="openAddAgent()">+ הוסף סוכן</button>
+    </div>`;
     return;
   }
   document.getElementById('leaderboardRows').innerHTML = rows.map(r=>{
