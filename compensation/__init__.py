@@ -45,9 +45,11 @@ def _migrate(database):
             database.text("PRAGMA table_info(agents)")
         )}
         new_cols = {
-            "target_annual":    "ALTER TABLE agents ADD COLUMN target_annual REAL",
-            "target_quarterly": "ALTER TABLE agents ADD COLUMN target_quarterly REAL",
-            "office_tab":       "ALTER TABLE agents ADD COLUMN office_tab TEXT",
+            "target_annual":      "ALTER TABLE agents ADD COLUMN target_annual REAL",
+            "target_quarterly":   "ALTER TABLE agents ADD COLUMN target_quarterly REAL",
+            "office_tab":         "ALTER TABLE agents ADD COLUMN office_tab TEXT",
+            "override_threshold": "ALTER TABLE agents ADD COLUMN override_threshold REAL",
+            "override_agent_pct": "ALTER TABLE agents ADD COLUMN override_agent_pct REAL",
         }
         for col, sql in new_cols.items():
             if col not in existing:

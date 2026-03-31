@@ -186,6 +186,37 @@ def deactivate_agent(agent_id):
     return _json({"message": "Agent deactivated"})
 
 
+@compensation_bp.put("/agents/<int:agent_id>/split")
+def set_agent_split(agent_id):
+    """Admin: set per-agent custom split override."""
+    err = _require_admin()
+    if err:
+        return err
+    agent = Agent.query.get_or_404(agent_id)
+    data = request.get_json(silent=True) or {}
+
+    threshold = data.get("override_threshold")
+    agent_pct = data.get("override_agent_pct")
+
+    if threshold is None and agent_pct is None:
+        # Clear override
+        agent.override_threshold = None
+        agent.override_agent_pct = None
+        msg = "ספליט אישי הוסר — חוזר למדרגות הגלובליות"
+    else:
+        if threshold is None or agent_pct is None:
+            return _json({"error": "נדרשים גם override_threshold וגם override_agent_pct"}, 400)
+        if not (0 < float(agent_pct) < 100):
+            return _json({"error": "override_agent_pct חייב להיות בין 1 ל-99"}, 400)
+        agent.override_threshold = float(threshold)
+        agent.override_agent_pct = float(agent_pct)
+        msg = f"ספליט אישי הוגדר: {agent_pct}% לסוכן מעל ₪{threshold:,.0f}"
+
+    agent.updated_at = datetime.utcnow()
+    db.session.commit()
+    return _json({"agent": agent.to_dict(), "message": msg})
+
+
 @compensation_bp.post("/agents/<int:agent_id>/trainer")
 def assign_trainer(agent_id):
     agent = Agent.query.get_or_404(agent_id)

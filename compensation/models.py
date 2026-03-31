@@ -30,6 +30,11 @@ class Agent(db.Model):
     target_quarterly = db.Column(db.Float, nullable=True)    # יעד רבעוני
     office_tab       = db.Column(db.Text, nullable=True)     # רחובות / יבנה
 
+    # Per-agent custom split override (admin-configurable)
+    # If set, above override_threshold the agent earns override_agent_pct instead of tier default
+    override_threshold = db.Column(db.Float, nullable=True)  # GCI סף (e.g. 250000)
+    override_agent_pct = db.Column(db.Float, nullable=True)  # % לסוכן מעל הסף (e.g. 60.0)
+
     is_active        = db.Column(db.Boolean, default=True)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at       = db.Column(db.DateTime, default=datetime.utcnow,
@@ -58,6 +63,8 @@ class Agent(db.Model):
             "target_annual": self.target_annual,
             "target_quarterly": self.target_quarterly,
             "office_tab": self.office_tab,
+            "override_threshold": self.override_threshold,
+            "override_agent_pct": self.override_agent_pct,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

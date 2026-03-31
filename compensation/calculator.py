@@ -123,6 +123,45 @@ def calculate_commission(agent_id: int, gross_commission: float, deal_date: date
     ytd_before = _ytd_gci(agent_id, fiscal_year)
     tiers = _active_tiers()
 
+    # --- Build effective tier list (inject per-agent override if set) ---
+    # If the agent has a custom override, we synthesise a virtual tier above the threshold.
+    effective_tiers = list(tiers)
+    if agent.override_threshold is not None and agent.override_agent_pct is not None:
+        # Find the global tier that contains the threshold and cap it there,
+        # then append a virtual "override" tier above the threshold.
+        capped = []
+        for t in effective_tiers:
+            if t.max_gci is None or t.max_gci > agent.override_threshold:
+                # Cap this tier at the threshold
+                from dataclasses import dataclass as _dc
+
+                class _VirtualTier:
+                    def __init__(self, tier_name, tier_name_he, min_gci, max_gci, agent_pct, office_pct):
+                        self.tier_name = tier_name
+                        self.tier_name_he = tier_name_he
+                        self.min_gci = min_gci
+                        self.max_gci = max_gci
+                        self.agent_pct = agent_pct
+                        self.office_pct = office_pct
+
+                if t.min_gci < agent.override_threshold:
+                    capped.append(_VirtualTier(
+                        t.tier_name, t.tier_name_he,
+                        t.min_gci, agent.override_threshold,
+                        t.agent_pct, t.office_pct,
+                    ))
+                # Insert custom override tier (unlimited ceiling unless another tier exists above)
+                override_office_pct = round(100.0 - agent.override_agent_pct, 4)
+                capped.append(_VirtualTier(
+                    "הסכם אישי", "הסכם אישי",
+                    agent.override_threshold, None,
+                    agent.override_agent_pct, override_office_pct,
+                ))
+                break
+            else:
+                capped.append(t)
+        effective_tiers = capped
+
     # --- Graduated split ---
     remaining = gross_commission
     cursor = ytd_before
@@ -130,7 +169,7 @@ def calculate_commission(agent_id: int, gross_commission: float, deal_date: date
     office_amount = 0.0
     tiers_crossed: list[TierPortion] = []
 
-    for tier in tiers:
+    for tier in effective_tiers:
         if remaining <= 0:
             break
         # Skip tiers entirely below cursor

@@ -271,6 +271,15 @@ tr:hover td{background:#1e2136;cursor:pointer}
 <script>
 const API = '';  // same origin
 let allAgents = [], allTiers = [], currentYear = new Date().getFullYear();
+let _adminKey = localStorage.getItem('comp_admin_key') || '';
+
+function ensureAdminKey() {
+  if(!_adminKey) {
+    _adminKey = prompt('הזן Admin Key לפעולה זו:') || '';
+    if(_adminKey) localStorage.setItem('comp_admin_key', _adminKey);
+  }
+  return _adminKey;
+}
 
 // ─── helpers ────────────────────────────────────────────────
 const fmt = n => n == null ? '—' : '₪' + Number(n).toLocaleString('he-IL', {maximumFractionDigits:0});
@@ -535,7 +544,13 @@ function renderAgentDetail(d){
             <div class="split-val" style="color:#f59e0b">${fmt(d.ytd_trainer_overrides_paid)}</div>
           </div>`:''}
           <div style="margin-top:14px">
-            <button class="btn btn-success" onclick="openAddTxn(${a.id})">+ הוסף עסקה לסוכן זה</button>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn btn-success" onclick="openAddTxn(${a.id})">+ הוסף עסקה</button>
+              <button class="btn btn-outline" onclick="ensureAdminKey();openSplitModal(${a.id},\`${a.name_he}\`,${a.override_threshold||'null'},${a.override_agent_pct||'null'})">⚙️ ספליט אישי</button>
+            </div>
+            ${a.override_threshold?\`<div style="margin-top:8px;padding:8px 12px;background:#0e2520;border-radius:8px;font-size:.8rem;color:#22c55e;border:1px solid #166534">
+              ✓ ספליט אישי פעיל: מעל \${fmt(a.override_threshold)} → \${a.override_agent_pct}% לסוכן
+            </div>\`:''}
           </div>
         </div>
       </div>
@@ -757,9 +772,92 @@ async function populateAgentSelects(){
   });
 }
 
+
+let _splitAgentId = null;
+
+function openSplitModal(agentId, agentName, currentThreshold, currentPct) {
+  _splitAgentId = agentId;
+  document.getElementById('splitAgentName').textContent = agentName;
+  document.getElementById('splitThreshold').value = currentThreshold || '';
+  document.getElementById('splitAgentPct').value = currentPct || '';
+  updateSplitPreview();
+  document.getElementById('modalSplit').classList.remove('hidden');
+}
+function closeSplitModal() { document.getElementById('modalSplit').classList.add('hidden'); }
+
+function updateSplitPreview() {
+  const pct = +document.getElementById('splitAgentPct').value;
+  const thr = +document.getElementById('splitThreshold').value;
+  if(pct && thr) {
+    document.getElementById('splitPreview').innerHTML =
+      `מעל ${fmt(thr)}: סוכן <b style="color:#22c55e">${pct}%</b> | משרד <b style="color:#7c83f5">${100-pct}%</b>`;
+  } else {
+    document.getElementById('splitPreview').innerHTML = '';
+  }
+}
+document.getElementById('splitThreshold')?.addEventListener('input', updateSplitPreview);
+document.getElementById('splitAgentPct')?.addEventListener('input', updateSplitPreview);
+
+async function saveAgentSplit() {
+  const threshold = +document.getElementById('splitThreshold').value;
+  const pct = +document.getElementById('splitAgentPct').value;
+  if(!threshold || !pct) { toast('יש להזין סף ואחוז', true); return; }
+  try {
+    const r = await api(`/comp/agents/${_splitAgentId}/split`, {
+      method: 'PUT',
+      body: JSON.stringify({ override_threshold: threshold, override_agent_pct: pct }),
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': _adminKey }
+    });
+    toast('✅ ' + r.message);
+    closeSplitModal();
+    openAgentDetail(_splitAgentId);
+  } catch(e) { toast('שגיאה: ' + e.message, true); }
+}
+
+async function clearAgentSplit() {
+  try {
+    const r = await api(`/comp/agents/${_splitAgentId}/split`, {
+      method: 'PUT',
+      body: JSON.stringify({ override_threshold: null, override_agent_pct: null }),
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Key': _adminKey }
+    });
+    toast('✅ ' + r.message);
+    closeSplitModal();
+    openAgentDetail(_splitAgentId);
+  } catch(e) { toast('שגיאה: ' + e.message, true); }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────
 initYear();
 showView('leaderboard');
 </script>
+
+<!-- MODAL: Per-agent custom split (admin) -->
+<div id="modalSplit" class="modal-bg hidden">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">⚙️ ספליט אישי לסוכן</div>
+    <div id="splitAgentName" style="font-weight:600;margin-bottom:16px;color:#7c83f5"></div>
+    <div style="background:#0f1117;border-radius:8px;padding:12px;margin-bottom:16px;font-size:.82rem;color:#9ea3c8">
+      מעל הסף שתגדיר, הסוכן יקבל את האחוז המותאם אישית במקום המדרגה הגלובלית.
+      הדלתא (הפרש מהמדרגה הגלובלית) עוברת לסוכן אוטומטית.
+    </div>
+    <div class="form-group">
+      <label class="form-label">סף GCI שנתי (₪) — מעל סכום זה</label>
+      <input class="form-control" type="number" id="splitThreshold" placeholder="250000">
+    </div>
+    <div class="form-group">
+      <label class="form-label">% לסוכן מעל הסף</label>
+      <input class="form-control" type="number" id="splitAgentPct" placeholder="60" min="1" max="99">
+      <div id="splitPreview" style="font-size:.78rem;color:#9ea3c8;margin-top:4px"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:space-between;margin-top:8px">
+      <button class="btn btn-danger" onclick="clearAgentSplit()">הסר ספליט אישי</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeSplitModal()">ביטול</button>
+        <button class="btn btn-primary" onclick="saveAgentSplit()">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
