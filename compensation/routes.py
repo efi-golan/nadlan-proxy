@@ -447,10 +447,15 @@ def office_leaderboard():
             agent_id=agent.id, fiscal_year=fiscal_year, voided=False
         ).count()
 
+        # Target vs actual
+        target_ann = agent.target_annual or 0
+        target_pct = round(ytd / target_ann * 100, 1) if target_ann > 0 else None
+
         rows.append({
             "agent_id": agent.id,
             "name_he": agent.name_he,
             "name_en": agent.name_en,
+            "office_tab": agent.office_tab,
             "ytd_gci": round(ytd, 2),
             "current_tier": current_tier.tier_name,
             "current_tier_he": current_tier.tier_name_he,
@@ -458,6 +463,9 @@ def office_leaderboard():
             "progress_pct": progress_pct,
             "gap_to_next_tier": round(next_tier.min_gci - ytd, 2) if next_tier else 0,
             "transaction_count": txn_count,
+            "target_annual": target_ann or None,
+            "target_quarterly": agent.target_quarterly,
+            "target_pct": target_pct,
         })
 
     rows.sort(key=lambda x: x["ytd_gci"], reverse=True)
@@ -562,3 +570,109 @@ def simulate():
 
     result = simulate_earnings(starting_ytd, additional_gci)
     return _json({"simulation": result})
+
+
+# ---------------------------------------------------------------------------
+# Google Sheets Sync (called by Zapier)
+# ---------------------------------------------------------------------------
+#
+# Zapier sends one POST per agent row whenever the sheet changes.
+# Body (from Zapier "Webhooks by Zapier" action):
+# {
+#   "sync_key": "<COMP_ADMIN_KEY>",
+#   "tab": "רחובות",
+#   "name": "אפי",
+#   "total_commission": 148425,
+#   "transaction_count": 4,
+#   "target_annual": 1000000,
+#   "target_quarterly": 275000
+# }
+#
+# Logic:
+#  - Find or create agent by name + tab
+#  - Update target fields
+#  - Calculate delta vs current YTD GCI → record as transaction if positive
+
+@compensation_bp.post("/sync/sheets")
+def sync_from_sheets():
+    data = request.get_json(silent=True) or {}
+
+    # Auth: accept sync_key in body or X-Admin-Key header
+    provided_key = data.get("sync_key") or request.headers.get("X-Admin-Key", "")
+    if ADMIN_KEY and provided_key != ADMIN_KEY:
+        return _json({"error": "Unauthorised"}, 401)
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return _json({"error": "name is required"}, 400)
+
+    try:
+        total_commission = float(data.get("total_commission") or 0)
+    except (ValueError, TypeError):
+        return _json({"error": "total_commission must be a number"}, 400)
+
+    tab          = (data.get("tab") or "").strip() or None
+    target_ann   = float(data.get("target_annual") or 0) or None
+    target_qrt   = float(data.get("target_quarterly") or 0) or None
+    fiscal_year  = int(data.get("fiscal_year") or date.today().year)
+
+    # Find or create agent by name (and tab if provided)
+    q = Agent.query.filter(Agent.name_he == name, Agent.is_active == True)  # noqa: E712
+    agent = q.first()
+    if not agent:
+        agent = Agent(name_he=name, office_tab=tab)
+        db.session.add(agent)
+        db.session.flush()
+
+    # Update targets + tab
+    if target_ann is not None:
+        agent.target_annual = target_ann
+    if target_qrt is not None:
+        agent.target_quarterly = target_qrt
+    if tab:
+        agent.office_tab = tab
+    agent.updated_at = datetime.utcnow()
+
+    # Calculate delta vs what we already have in DB
+    current_ytd = _ytd_gci(agent.id, fiscal_year)
+    delta = round(total_commission - current_ytd, 2)
+
+    txn = None
+    if delta > 0:
+        deal_date = date.today()
+        result = calculate_commission(agent.id, delta, deal_date)
+        txn = Transaction(
+            agent_id=agent.id,
+            deal_date=deal_date,
+            gross_commission=delta,
+            agent_split_pct=result.agent_split_pct,
+            office_split_pct=result.office_split_pct,
+            agent_amount=result.agent_amount,
+            office_amount=result.office_amount_gross,
+            trainer_override=result.trainer_override,
+            tier_at_time=result.tier_at_time,
+            ytd_gci_before=result.ytd_gci_before,
+            ytd_gci_after=result.ytd_gci_after,
+            fiscal_year=result.fiscal_year,
+            notes=f"סנכרון מגיליון Google Sheets — טאב: {tab or '—'}",
+        )
+        db.session.add(txn)
+        if result.trainer_override > 0 and result.trainer_id:
+            db.session.add(TrainerOverride(
+                transaction_id=txn.id if txn.id else 0,
+                trainer_id=result.trainer_id,
+                trainee_id=agent.id,
+                override_amount=result.trainer_override,
+                override_pct=agent.trainer_pct,
+            ))
+
+    db.session.commit()
+
+    return _json({
+        "status": "ok",
+        "agent": agent.to_dict(),
+        "current_ytd": current_ytd,
+        "sheet_total": total_commission,
+        "delta_recorded": delta if delta > 0 else 0,
+        "transaction_created": txn is not None,
+    })

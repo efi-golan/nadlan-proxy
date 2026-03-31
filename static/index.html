@@ -51,7 +51,7 @@ th{color:#9ea3c8;font-weight:500;padding:10px 12px;text-align:right;border-botto
 td{padding:10px 12px;border-bottom:1px solid #1e2136}
 tr:hover td{background:#1e2136;cursor:pointer}
 /* leaderboard */
-.lb-row{display:grid;grid-template-columns:40px 1fr 130px 130px 120px 60px;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #1e2136;transition:.2s}
+.lb-row{display:grid;grid-template-columns:40px 1fr 120px 140px 110px 110px 50px;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #1e2136;transition:.2s}
 .lb-row:hover{background:#1e2136;cursor:pointer;border-radius:8px}
 .lb-rank{font-size:1.1rem;font-weight:700;color:#7c83f5;text-align:center}
 .lb-rank.r1{color:#FFD700}.lb-rank.r2{color:#C0C0C0}.lb-rank.r3{color:#CD7F32}
@@ -88,7 +88,7 @@ tr:hover td{background:#1e2136;cursor:pointer}
 .toast.err{background:#ef4444}
 @keyframes fadein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 /* responsive */
-@media(max-width:800px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr}.lb-row{grid-template-columns:32px 1fr 90px 70px}}
+@media(max-width:800px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr}.lb-row{grid-template-columns:32px 1fr 80px 80px}}
 .hidden{display:none!important}
 .spinner{width:32px;height:32px;border:3px solid #3d4270;border-top-color:#7c83f5;border-radius:50%;animation:spin .7s linear infinite;margin:40px auto}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -120,11 +120,17 @@ tr:hover td{background:#1e2136;cursor:pointer}
   <div id="officeTotals" class="g4" style="margin-bottom:20px"></div>
   <div class="card">
     <div class="sec-title">דירוג סוכנים — <span id="lbYear"></span></div>
-    <div style="display:grid;grid-template-columns:40px 1fr 130px 130px 120px 60px;gap:12px;padding:8px 16px">
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 10px" onclick="filterTab(null)" id="tabAll">כל הסוכנים</button>
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 10px" onclick="filterTab('רחובות')" id="tabRechov">רחובות</button>
+      <button class="btn btn-outline" style="font-size:.78rem;padding:4px 10px" onclick="filterTab('יבנה')" id="tabYavne">יבנה</button>
+    </div>
+    <div style="display:grid;grid-template-columns:40px 1fr 120px 140px 110px 110px 50px;gap:10px;padding:8px 16px">
       <div style="color:#9ea3c8;font-size:.78rem">#</div>
       <div style="color:#9ea3c8;font-size:.78rem">שם</div>
       <div style="color:#9ea3c8;font-size:.78rem">GCI שנתי</div>
       <div style="color:#9ea3c8;font-size:.78rem">התקדמות לרמה הבאה</div>
+      <div style="color:#9ea3c8;font-size:.78rem">% יעד שנתי</div>
       <div style="color:#9ea3c8;font-size:.78rem">רמה</div>
       <div style="color:#9ea3c8;font-size:.78rem;text-align:center">עסקאות</div>
     </div>
@@ -325,7 +331,8 @@ async function loadLeaderboard(){
   try {
     const d = await api(`/comp/dashboard?fiscal_year=${currentYear}&limit=50`);
     renderOfficeTotals(d.office_totals);
-    renderLeaderboard(d.leaderboard);
+    _allLeaderboardRows = d.leaderboard;
+    filterTab(_activeTab);
   } catch(e){ toast('שגיאה בטעינת לידרבורד: '+e.message, true); }
 }
 
@@ -337,6 +344,21 @@ function renderOfficeTotals(t){
     <div class="card-sm"><div class="stat-label">תגמול מאמנים</div><div class="stat-val" style="color:#f59e0b">${fmt(t.total_trainer_overrides)}</div></div>`;
 }
 
+let _allLeaderboardRows = [];
+let _activeTab = null;
+
+function filterTab(tab){
+  _activeTab = tab;
+  ['tabAll','tabRechov','tabYavne'].forEach(id=>{
+    document.getElementById(id)?.classList.remove('btn-primary');
+    document.getElementById(id)?.classList.add('btn-outline');
+  });
+  const activeId = tab===null?'tabAll':tab==='רחובות'?'tabRechov':'tabYavne';
+  document.getElementById(activeId)?.classList.replace('btn-outline','btn-primary');
+  const filtered = tab===null ? _allLeaderboardRows : _allLeaderboardRows.filter(r=>r.office_tab===tab);
+  renderLeaderboard(filtered);
+}
+
 function renderLeaderboard(rows){
   if(!rows.length){
     document.getElementById('leaderboardRows').innerHTML='<div class="empty">אין נתונים לשנה זו</div>';
@@ -344,14 +366,24 @@ function renderLeaderboard(rows){
   }
   document.getElementById('leaderboardRows').innerHTML = rows.map(r=>{
     const gap = r.gap_to_next_tier > 0 ? `<span style="font-size:.75rem;color:#9ea3c8"> עוד ${fmt(r.gap_to_next_tier)}</span>` : '<span style="color:#22c55e;font-size:.75rem"> ✓ מקסימום</span>';
+    // Target bar
+    const tgtPct = r.target_pct != null ? Math.min(r.target_pct, 100) : null;
+    const tgtColor = tgtPct==null?'#9ea3c8':tgtPct>=100?'#22c55e':tgtPct>=70?'#f59e0b':'#ef4444';
+    const tgtBlock = r.target_annual ? `
+      <div>
+        <div class="prog-wrap" style="height:7px"><div style="height:100%;border-radius:4px;background:${tgtColor};width:${tgtPct||0}%"></div></div>
+        <div style="font-size:.7rem;color:${tgtColor}">${fmtPct(r.target_pct)} מיעד ${fmt(r.target_annual)}</div>
+      </div>` : '<div style="color:#9ea3c8;font-size:.75rem">—</div>';
+    const tabBadge = r.office_tab ? `<span style="font-size:.68rem;color:#9ea3c8;background:#1e2136;padding:1px 6px;border-radius:4px">${r.office_tab}</span>` : '';
     return `<div class="lb-row" onclick="openAgentDetail(${r.agent_id})">
       <div class="lb-rank ${r.rank<=3?'r'+r.rank:''}">${r.rank}</div>
-      <div><div class="lb-name">${r.name_he}</div><div style="font-size:.75rem;color:#9ea3c8">${r.name_en||''}</div></div>
+      <div><div class="lb-name">${r.name_he} ${tabBadge}</div><div style="font-size:.75rem;color:#9ea3c8">${r.name_en||''}</div></div>
       <div class="lb-gci">${fmt(r.ytd_gci)}</div>
       <div>
         <div class="prog-wrap"><div class="prog-bar ${progClass(r.current_tier)}" style="width:${Math.min(r.progress_pct,100)}%"></div></div>
         <div style="font-size:.72rem;color:#9ea3c8">${fmtPct(r.progress_pct)}${gap}</div>
       </div>
+      ${tgtBlock}
       <div>${tierBadge(r.current_tier, r.current_tier_he)}</div>
       <div class="lb-count">${r.transaction_count}</div>
     </div>`;
@@ -432,8 +464,28 @@ function renderAgentDetail(d){
             ${tierBadge(ct.tier_name, ct.tier_name_he)}
           </div>
           <div style="font-size:2.2rem;font-weight:800;color:#e8eaf6">${fmt(d.ytd_gci)}</div>
-          <div style="color:#9ea3c8;font-size:.8rem;margin-bottom:8px">GCI שנה ${d.fiscal_year}</div>
+          <div style="color:#9ea3c8;font-size:.8rem;margin-bottom:8px">GCI שנה ${d.fiscal_year} ${a.office_tab?'<span style="background:#1e2136;padding:1px 8px;border-radius:4px;margin-right:6px">'+a.office_tab+'</span>':''}</div>
           ${progressBar}
+          ${(()=>{
+            if(!a.target_annual) return '';
+            const tPct = Math.min(d.ytd_gci/a.target_annual*100, 100).toFixed(1);
+            const tColor = tPct>=100?'#22c55e':tPct>=70?'#f59e0b':'#ef4444';
+            const remaining = Math.max(a.target_annual - d.ytd_gci, 0);
+            return \`<div style="margin:12px 0;padding:12px;background:#0f1117;border-radius:8px;border:1px solid #2d3148">
+              <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#9ea3c8;margin-bottom:6px">
+                <span>יעד שנתי 2026</span><span style="color:\${tColor};font-weight:700">\${tPct}%</span>
+              </div>
+              <div class="prog-wrap" style="height:12px">
+                <div style="height:100%;border-radius:6px;background:\${tColor};width:\${tPct}%"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.78rem">
+                <span style="color:\${tColor};font-weight:700">\${fmt(d.ytd_gci)}</span>
+                <span style="color:#9ea3c8">יעד: \${fmt(a.target_annual)}</span>
+              </div>
+              \${remaining>0?\`<div style="font-size:.75rem;color:#9ea3c8;margin-top:4px">נשאר להשלמת יעד: <b style="color:#f59e0b">\${fmt(remaining)}</b></div>\`:'<div style="font-size:.75rem;color:#22c55e;margin-top:4px">🏆 יעד שנתי הושג!</div>'}
+              \${a.target_quarterly?\`<div style="font-size:.75rem;color:#9ea3c8;margin-top:2px">יעד רבעוני: \${fmt(a.target_quarterly)}</div>\`:''}
+            </div>\`;
+          })()}
           ${trainerBlock}
         </div>
       </div>

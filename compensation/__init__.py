@@ -32,5 +32,24 @@ def init_db(app):
     with app.app_context():
         from . import models  # noqa: F401 — ensures all models are known to SQLAlchemy
         db.create_all()
+        _migrate(db)
         from .seed import seed_tiers_if_empty
         seed_tiers_if_empty()
+
+
+def _migrate(database):
+    """Add new columns to existing tables if they don't exist yet."""
+    engine = database.engine
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(
+            database.text("PRAGMA table_info(agents)")
+        )}
+        new_cols = {
+            "target_annual":    "ALTER TABLE agents ADD COLUMN target_annual REAL",
+            "target_quarterly": "ALTER TABLE agents ADD COLUMN target_quarterly REAL",
+            "office_tab":       "ALTER TABLE agents ADD COLUMN office_tab TEXT",
+        }
+        for col, sql in new_cols.items():
+            if col not in existing:
+                conn.execute(database.text(sql))
+        conn.commit()

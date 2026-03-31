@@ -25,6 +25,11 @@ class Agent(db.Model):
     # Fiscal year reset: if NULL, use Jan 1 each year
     anniversary_date = db.Column(db.Date, nullable=True)
 
+    # Targets (pulled from Google Sheets)
+    target_annual    = db.Column(db.Float, nullable=True)    # יעד שנתי
+    target_quarterly = db.Column(db.Float, nullable=True)    # יעד רבעוני
+    office_tab       = db.Column(db.Text, nullable=True)     # רחובות / יבנה
+
     is_active        = db.Column(db.Boolean, default=True)
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at       = db.Column(db.DateTime, default=datetime.utcnow,
@@ -50,6 +55,9 @@ class Agent(db.Model):
             "trainer_months": self.trainer_months,
             "trainer_pct": self.trainer_pct,
             "anniversary_date": self.anniversary_date.isoformat() if self.anniversary_date else None,
+            "target_annual": self.target_annual,
+            "target_quarterly": self.target_quarterly,
+            "office_tab": self.office_tab,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
