@@ -165,7 +165,7 @@ init_db(app)
 #   SHEETS_COL_NAME=1, SHEETS_COL_COMMISSION=3, SHEETS_COL_TARGET=5, SHEETS_COL_QUARTERLY=6
 
 SHEETS_ID       = os.environ.get("SHEETS_ID", "1MAnI-x5KzdHSymdb1ep7XzxCWJrI7BBq")
-SHEETS_TABS     = [t.strip() for t in os.environ.get("SHEETS_TABS", "רחובות,יבנה").split(",")]
+SHEETS_TABS     = [t.strip() for t in os.environ.get("SHEETS_TABS", "רחובות 2026,יבנה 2026").split(",")]
 SHEETS_INTERVAL = int(os.environ.get("SHEETS_SYNC_INTERVAL", "300"))  # seconds (default 5 min)
 COL_NAME        = int(os.environ.get("SHEETS_COL_NAME", "7")) - 1   # col 7 = סוכן
 COL_COMMISSION  = int(os.environ.get("SHEETS_COL_COMMISSION", "16")) - 1  # col 16 = סך עמלה
